@@ -1,0 +1,249 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Invodata Design System - All colors in HSL */
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 221 83% 53%;
+    --accent-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --danger: 0 84% 60%;
+    --danger-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 221 83% 96%;
+    --sidebar-accent-foreground: 221 83% 53%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 221 83% 53%;
+
+    /* Custom Invodata tokens */
+    --invodata-blue-50: 221 100% 97%;
+    --invodata-blue-100: 221 100% 93%;
+    --invodata-blue-500: 221 83% 53%;
+    --invodata-blue-600: 221 83% 47%;
+    --invodata-blue-700: 221 83% 40%;
+
+    --chart-1: 221 83% 53%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 0 84% 60%;
+    --chart-5: 262 83% 58%;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 14%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 14%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 212 27% 84%;
+
+    --sidebar-background: 222 47% 8%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 17%;
+    --sidebar-ring: 221 83% 53%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@keyframes upload-popup-breathing {
+  0%, 100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.12), 0 0 0 1px hsl(var(--primary) / 0.35);
+    border-color: hsl(var(--primary) / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px hsl(var(--primary) / 0.06), 0 0 0 1px hsl(var(--primary) / 0.55);
+    border-color: hsl(var(--primary) / 0.55);
+  }
+}
+
+@keyframes upload-progress-sweep {
+  0% {
+    transform: translateX(-60%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  90% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(160%);
+    opacity: 0;
+  }
+}
+
+@layer components {
+  .invodata-card {
+    @apply bg-card rounded-xl border border-border shadow-sm;
+  }
+
+  .upload-popup-breathe {
+    animation: uploadPopupBreathe 2.4s ease-in-out infinite;
+  }
+
+  .upload-progress-breathe {
+    animation: uploadProgressBreathe 2.1s ease-in-out infinite;
+  }
+
+  .invodata-card-hover {
+    @apply invodata-card transition-all duration-200 hover:shadow-md hover:border-primary/20;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .status-paid {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .status-pending {
+    @apply bg-yellow-100 text-yellow-700;
+  }
+
+  .status-overdue {
+    @apply bg-red-100 text-red-700;
+  }
+
+  .status-draft {
+    @apply bg-gray-100 text-gray-700;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground;
+  }
+
+  .sidebar-item-active {
+    @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
+  }
+
+  .upload-popup-breathing {
+    animation: upload-popup-breathing 3.4s ease-in-out infinite;
+    border-color: hsl(var(--primary) / 0.4);
+  }
+
+  .upload-progress-indicator {
+    position: relative;
+    overflow: hidden;
+    background-color: hsl(var(--primary));
+  }
+
+  .upload-progress-indicator::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 45%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--primary-foreground) / 0.55) 50%,
+      transparent 100%
+    );
+    filter: blur(2px);
+    animation: upload-progress-sweep 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes uploadPopupBreathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px hsl(var(--primary) / 0.18);
+  }
+}
+
+@keyframes uploadProgressBreathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.0);
+  }
+  50% {
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.25);
+  }
+}

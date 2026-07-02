@@ -1,0 +1,114 @@
+version: "3.9"
+
+services:
+  mariadb:
+    image: mariadb:11.5
+    container_name: invodata-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    container_name: invodata-mongodb
+    restart: unless-stopped
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: invodata-backend
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      SPRING_DATA_MONGODB_URI: ${SPRING_DATA_MONGODB_URI}
+      INVODATA_PYTHON_API: ${INVODATA_PYTHON_API}
+      INVODATA_FRONTEND_URL: ${INVODATA_FRONTEND_URL}
+      INVODATA_CORS_ALLOWED_ORIGINS: ${INVODATA_CORS_ALLOWED_ORIGINS}
+      INVODATA_MEDIA_PATH: ${INVODATA_MEDIA_PATH}
+      INVODATA_STORAGE_ENCRYPTION_ENABLED: ${INVODATA_STORAGE_ENCRYPTION_ENABLED}
+      INVODATA_AI_ENABLE: ${INVODATA_AI_ENABLE}
+      INVODATA_PROJECT_PATH: /workspace
+      INVODATA_ALLOW_COMPOSE_RESTART: ${INVODATA_ALLOW_COMPOSE_RESTART}
+      INVODATA_AI_CREDENTIALS_PATH: ${INVODATA_AI_CREDENTIALS_PATH}
+      INVODATA_JWT_SECRET: ${INVODATA_JWT_SECRET}
+      ADMIN_STATS_PASSWORD: ${ADMIN_STATS_PASSWORD}
+    volumes:
+      - ${CONTAINER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+      - ./:/workspace
+      - invodata-media-local:/data/local
+    ports:
+      - "${BACKEND_PORT}:8080"
+
+  python-api:
+    build: ./api-python
+    container_name: invodata-python-api
+    restart: unless-stopped
+    environment:
+      PORT: ${PYTHON_PORT}
+      INVODATA_AI_ENABLED: ${INVODATA_AI_ENABLE}
+      GOOGLE_APPLICATION_CREDENTIALS: ${INVODATA_AI_CREDENTIALS_PATH}
+      GCP_PROJECT: ${GCP_PROJECT}
+      GCP_LOCATION: ${GCP_LOCATION}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    container_name: invodata-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT}:8080"
+
+  caddy:
+    image: caddy:2.8
+    container_name: invodata-caddy
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      INVODATA_DOMAIN: ${INVODATA_DOMAIN}
+      INVODATA_LOCAL_DOMAIN: ${INVODATA_LOCAL_DOMAIN}
+      CADDY_EMAIL: ${CADDY_EMAIL}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  mariadb-data:
+  mongodb-data:
+  invodata-media-local:
+  caddy-data:
+  caddy-config:

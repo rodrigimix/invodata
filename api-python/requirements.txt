@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-multipart
+pdf2image
+pyzbar
+opencv-python-headless
+numpy
+google-genai
+python-dotenv
+pymupdf
+pytesseract
+pillow
+opencv-python
+protobuf
+gunicorn
+pydantic

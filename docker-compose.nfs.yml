@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  backend:
+    volumes:
+      - invodata-media-nfs:/data/local
+
+  python-api:
+    volumes:
+      - invodata-media-nfs:/data/local
+
+volumes:
+  invodata-media-nfs:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr=${NFS_SERVER},${NFS_MOUNT_OPTIONS:-vers=4.1,rw,nolock,soft}
+      device: ":${NFS_EXPORT}"
