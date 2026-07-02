@@ -33,11 +33,6 @@ GlobalWorkerOptions.workerSrc = workerSrc;
 
 const InvoiceUpload = () => {
   const { t, i18n } = useTranslation();
-  const isPt = i18n.language?.toLowerCase().startsWith("pt");
-  const surveyUrl = isPt
-    ? "https://forms.gle/J8a4V2sUE8jn43pE6"
-    : "https://forms.gle/SEjfKLthcsonTbCEA";
-  const surveyLabel = isPt ? "Responder ao inquérito" : "Take the survey";
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
@@ -48,16 +43,8 @@ const InvoiceUpload = () => {
     latestAt: string;
   }>>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [privacyEnabled, setPrivacyEnabled] = useState(true);
-  const [privacyOpen, setPrivacyOpen] = useState(true);
   const [processingOpen, setProcessingOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(true);
-  const [manualName, setManualName] = useState("");
-  const [manualTaxId, setManualTaxId] = useState("");
-  const [manualAddress, setManualAddress] = useState("");
-  const [manualPhone, setManualPhone] = useState("");
-  const [extraRedactionTerms, setExtraRedactionTerms] = useState("");
-  const [storeRedactedOnly, setStoreRedactedOnly] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -78,80 +65,9 @@ const InvoiceUpload = () => {
   const renderRetryRef = useRef(0);
   const dragCounterRef = useRef(0);
   const locale = i18n.language === "pt" ? "pt-PT" : "en-US";
-  const buildPrivacyPayload = () => {
-    const baseTerms = [manualAddress, manualPhone];
-    const extraTerms = extraRedactionTerms
-      .split(";")
-      .map((term) => term.trim())
-      .filter(Boolean);
-    const allTerms = [...baseTerms, ...extraTerms].map((term) => term.trim()).filter(Boolean);
-    return {
-      userTaxId: manualTaxId.trim() || undefined,
-      redactName: manualName.trim() || undefined,
-      redactTerms: allTerms.length > 0 ? allTerms.join(";") : undefined,
-      storeRedactedOnly,
-    };
-  };
-
-  const buildMaskedFilename = (originalName: string, contentType?: string | null) => {
-    const hasExtension = /\.[^./\\]+$/.test(originalName);
-    const base = hasExtension ? originalName.replace(/\.[^./\\]+$/, "") : originalName;
-    if (contentType?.includes("pdf")) {
-      return `${base}-mascarada.pdf`;
-    }
-    if (contentType?.startsWith("image/")) {
-      const ext = contentType.split("/")[1] || "png";
-      return `${base}-mascarada.${ext}`;
-    }
-    return `${base}-mascarada`;
-  };
 
   const startServerRedaction = async (entry: UploadEntry) => {
-    if (!entry.file) return;
-    if (entry.redactedPreviewUrl) {
-      URL.revokeObjectURL(entry.redactedPreviewUrl);
-    }
-    updateEntries((prev) =>
-      prev.map((item) =>
-        item.fileName === entry.fileName
-          ? { ...item, redactionStatus: "masking", redactionError: undefined }
-          : item
-      )
-    );
-    try {
-      const { userTaxId, redactName, redactTerms } = buildPrivacyPayload();
-      const { blob, contentType } = await requestRedactedPreview(entry.file, {
-        userTaxId,
-        redactName,
-        redactTerms,
-        redactBoxes: entry.redactionBoxes,
-      });
-      const previewUrl = URL.createObjectURL(blob);
-      const maskedName = buildMaskedFilename(entry.file.name, contentType);
-      const redactedFile = new File([blob], maskedName, { type: contentType || entry.file.type });
-      updateEntries((prev) =>
-        prev.map((item) =>
-          item.fileName === entry.fileName
-            ? {
-              ...item,
-              redactedFile,
-              redactedPreviewUrl: previewUrl,
-              redactedContentType: contentType,
-              redactionStatus: "ready",
-            }
-            : item
-        )
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t("invoiceUpload.errors.maskServer");
-      updateEntries((prev) =>
-        prev.map((item) =>
-          item.fileName === entry.fileName
-            ? { ...item, redactionStatus: "error", redactionError: message }
-            : item
-        )
-      );
-    }
+    // Redaction removed - privacy logic disabled
   };
 
   const handlePreviewMask = (entry: UploadEntry) => {
@@ -555,16 +471,10 @@ const InvoiceUpload = () => {
       const tasks = eligibleEntries.map(async (entry) => {
         if (!entry.file) return;
         try {
-          const privacyPayload = buildPrivacyPayload();
-          const redactedFile = entry.redactedFile;
-          if (storeRedactedOnly && !redactedFile) {
-            throw new Error(t("invoiceUpload.errors.maskRequired"));
-          }
-          const fileToUpload = storeRedactedOnly ? redactedFile! : entry.file;
           const response = await createUploadJob(
-            fileToUpload,
-            privacyPayload,
-            storeRedactedOnly ? undefined : redactedFile
+            entry.file,
+            undefined,
+            undefined
           );
           let shouldCancel = false;
           updateEntries((prev) =>
@@ -641,16 +551,10 @@ const InvoiceUpload = () => {
       })
     );
     try {
-      const privacyPayload = buildPrivacyPayload();
-      const redactedFile = entry.redactedFile;
-      if (storeRedactedOnly && !redactedFile) {
-        throw new Error(t("invoiceUpload.errors.maskRequired"));
-      }
-      const fileToUpload = storeRedactedOnly ? redactedFile! : entry.file;
       const response = await createUploadJob(
-        fileToUpload,
-        privacyPayload,
-        storeRedactedOnly ? undefined : redactedFile
+        entry.file,
+        undefined,
+        undefined
       );
       let shouldCancel = false;
       updateEntries((prev) =>
@@ -748,7 +652,7 @@ const InvoiceUpload = () => {
   return (
     <DashboardLayout>
       <Dialog open={previewOpen} onOpenChange={handlePreviewOpenChange}>
-        <DialogContent className="w-[calc(100%-2rem)] max-w-[calc(100%-2rem)] sm:max-w-5xl">
+        <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>{t("invoiceUpload.preview.title")}</DialogTitle>
             <DialogDescription>
@@ -849,7 +753,7 @@ const InvoiceUpload = () => {
           </div>
         </DialogContent>
       </Dialog>
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <Breadcrumb>
             <BreadcrumbList>
@@ -872,10 +776,10 @@ const InvoiceUpload = () => {
         <div />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-2 space-y-6">
           <div className="invodata-card p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">{t("invoiceUpload.dropzone.title")}</h2>
                 <p className="text-sm text-muted-foreground">{t("invoiceUpload.dropzone.subtitle")}</p>
@@ -888,15 +792,15 @@ const InvoiceUpload = () => {
             <div
               className={
                 isDragActive
-                  ? "border-2 border-dashed border-primary rounded-xl p-6 sm:p-8 text-center bg-primary/5"
-                  : "border-2 border-dashed border-border rounded-xl p-6 sm:p-8 text-center bg-muted/30"
+                  ? "border-2 border-dashed border-primary rounded-xl p-8 text-center bg-primary/5"
+                  : "border-2 border-dashed border-border rounded-xl p-8 text-center bg-muted/30"
               }
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragEnter={handleDragEnter}
               onDragLeave={handleDragLeave}
             >
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                 <Upload className="w-7 h-7 text-primary" />
               </div>
               <h3 className="text-lg font-semibold text-foreground">{t("invoiceUpload.dropzone.dropTitle")}</h3>
@@ -920,146 +824,10 @@ const InvoiceUpload = () => {
                 {t("invoiceUpload.dropzone.selectedCount", { count: selectedFiles.length })}
               </div>
             )}
-          </div>
+           </div>
 
-          <div className="invodata-card p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">{t("invoiceUpload.privacy.title")}</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {t("invoiceUpload.privacy.subtitle")}
-                </p>
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <ShieldCheck className="w-4 h-4 text-success" />
-                <span>{t("invoiceUpload.privacy.instantMasking")}</span>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Switch checked={privacyEnabled} onCheckedChange={setPrivacyEnabled} />
-                  <span>{privacyEnabled ? t("invoiceUpload.privacy.enabled") : t("invoiceUpload.privacy.disabled")}</span>
-                </div>
-                <button
-                  type="button"
-                  className="rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                  onClick={() => setPrivacyOpen((prev) => !prev)}
-                  aria-label={t("invoiceUpload.privacy.toggle")}
-                  aria-expanded={privacyOpen}
-                  aria-controls="privacy-section"
-                >
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 transition-transform",
-                      privacyOpen ? "rotate-180" : "rotate-0"
-                    )}
-                  />
-                </button>
-              </div>
-            </div>
-            {privacyOpen && (
-              <div
-                id="privacy-section"
-                className={cn(
-                  "transition-opacity",
-                  !privacyEnabled && "opacity-50 pointer-events-none"
-                )}
-              >
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="text-sm text-muted-foreground" htmlFor="manualName">
-                      {t("invoiceUpload.privacy.manualName")}
-                    </label>
-                    <Input
-                      id="manualName"
-                      className="mt-2"
-                      placeholder={t("invoiceUpload.privacy.manualNamePlaceholder")}
-                      value={manualName}
-                      onChange={(event) => setManualName(event.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground" htmlFor="manualTaxId">
-                      {t("invoiceUpload.privacy.manualTaxId")}
-                    </label>
-                    <Input
-                      id="manualTaxId"
-                      className="mt-2"
-                      placeholder={t("invoiceUpload.privacy.taxIdPlaceholder")}
-                      value={manualTaxId}
-                      onChange={(event) => setManualTaxId(event.target.value)}
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="text-sm text-muted-foreground" htmlFor="manualAddress">
-                      {t("invoiceUpload.privacy.manualAddress")}
-                    </label>
-                    <Input
-                      id="manualAddress"
-                      className="mt-2"
-                      placeholder={t("invoiceUpload.privacy.manualAddressPlaceholder")}
-                      value={manualAddress}
-                      onChange={(event) => setManualAddress(event.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground" htmlFor="manualPhone">
-                      {t("invoiceUpload.privacy.manualPhone")}
-                    </label>
-                    <Input
-                      id="manualPhone"
-                      className="mt-2"
-                      placeholder={t("invoiceUpload.privacy.manualPhonePlaceholder")}
-                      value={manualPhone}
-                      onChange={(event) => setManualPhone(event.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <label className="text-sm text-muted-foreground" htmlFor="extraRedactionTerms">
-                    {t("invoiceUpload.privacy.extraTerms")}
-                  </label>
-                  <Textarea
-                    id="extraRedactionTerms"
-                    className="mt-2"
-                    placeholder={t("invoiceUpload.privacy.extraTermsPlaceholder")}
-                    value={extraRedactionTerms}
-                    onChange={(event) => setExtraRedactionTerms(event.target.value)}
-                  />
-                </div>
-                <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{t("invoiceUpload.privacy.storeRedacted")}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {t("invoiceUpload.privacy.storeRedactedHint")}
-                    </p>
-                  </div>
-                  <Switch checked={storeRedactedOnly} onCheckedChange={setStoreRedactedOnly} />
-                </div>
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-xs text-muted-foreground">
-                    {t("invoiceUpload.privacy.applyMaskHint")}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs"
-                    onClick={() => {
-                      uploadEntries
-                        .filter((entry) => entry.file && entry.redactionStatus !== "masking")
-                        .forEach((entry) => {
-                          void startServerRedaction(entry);
-                        });
-                    }}
-                    disabled={!privacyEnabled || uploadEntries.length === 0}
-                  >
-                    {t("invoiceUpload.privacy.applyMask")}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="invodata-card p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+           <div className="invodata-card p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-semibold text-foreground">{t("invoiceUpload.processing.title")}</h2>
                 <button
@@ -1135,17 +903,13 @@ const InvoiceUpload = () => {
                   const duplicateFileName = duplicateInvoices[0]?.originalFileName;
                   const duplicateLink = isDuplicate
                     ? duplicateInvoices.length === 1
-                      ? `/invoices/${duplicateInvoices[0].publicId}`
+                      ? `/invoices/${duplicateInvoices[0].id}`
                       : duplicateFileName
                         ? `/invoices?fileName=${encodeURIComponent(duplicateFileName)}`
                         : null
                     : null;
                   const canRemove = status === "idle" || status === "canceled" || status === "error";
-                  const canPreview =
-                    privacyEnabled &&
-                    Boolean(entry.file) &&
-                    status !== "uploading" &&
-                    entry.redactionStatus === "ready";
+                  const canPreview = false;
                   const canUploadEntry = Boolean(entry.file) && status !== "success";
                   const isUploading = status === "uploading";
                   const progressValue = Math.round(entry.progress ?? 0);
@@ -1162,7 +926,7 @@ const InvoiceUpload = () => {
                               : "border border-border rounded-lg p-4"
                       }
                     >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div
                             className={
@@ -1190,7 +954,7 @@ const InvoiceUpload = () => {
                           <div>
                             {isComplete && invoiceLinks.length === 1 ? (
                               <Link
-                                to={`/invoices/${invoiceLinks[0].publicId}`}
+                                to={`/invoices/${invoiceLinks[0].id}`}
                                 className="text-sm font-medium text-primary hover:underline"
                               >
                                 {fileName}
@@ -1245,7 +1009,7 @@ const InvoiceUpload = () => {
                             )}
                           </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                        <div className="flex items-center gap-3">
                           {canUploadEntry && (
                             <Button
                               size="sm"
@@ -1401,7 +1165,7 @@ const InvoiceUpload = () => {
                 )}
                 {recentUploads.map((upload) => (
                   <div key={upload.fileName} className="border border-border rounded-lg p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center justify-between">
                       <div>
                         <Link
                           to={`/invoices?fileName=${encodeURIComponent(upload.fileName)}`}
@@ -1506,23 +1270,6 @@ const InvoiceUpload = () => {
           </div>
         </div>
       </div>
-
-      <footer className="mt-12 pt-6 border-t border-border">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <p className="text-sm text-muted-foreground">{t("app.footer")}</p>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-            <Link to="/terms" className="hover:text-foreground">
-              {t("auth.termsLink")}
-            </Link>
-            <Link to="/privacy" className="hover:text-foreground">
-              {t("auth.privacyPolicy")}
-            </Link>
-            <a href={surveyUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
-              {surveyLabel}
-            </a>
-          </div>
-        </div>
-      </footer>
     </DashboardLayout>
   );
 };

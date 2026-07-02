@@ -2,8 +2,6 @@ package pt.rodrigimix.invodata.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import pt.rodrigimix.invodata.security.encryption.EncryptedBigDecimalConverter;
-import pt.rodrigimix.invodata.security.encryption.EncryptedLocalDateConverter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -23,11 +21,9 @@ public class BalanceHistory {
     @JoinColumn(name = "account_id", nullable = false)
     private Account account;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    @Convert(converter = EncryptedLocalDateConverter.class)
+    @Column(nullable = false)
     private LocalDate date;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    @Convert(converter = EncryptedBigDecimalConverter.class)
+    @Column(nullable = false)
     private BigDecimal balance;
 }

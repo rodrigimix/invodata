@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { CategoryChart } from "@/components/dashboard/CategoryChart";
@@ -28,11 +27,6 @@ import { useTranslation } from "react-i18next";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
-  const isPt = i18n.language?.toLowerCase().startsWith("pt");
-  const surveyUrl = isPt
-    ? "https://forms.gle/J8a4V2sUE8jn43pE6"
-    : "https://forms.gle/SEjfKLthcsonTbCEA";
-  const surveyLabel = isPt ? "Responder ao inquérito" : "Take the survey";
   const [showAddInvoice, setShowAddInvoice] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [savingsRate, setSavingsRate] = useState<SavingsRateStats | null>(null);
@@ -295,21 +289,21 @@ const Dashboard = () => {
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
-        <div className="space-y-1">
+      <div className="flex items-center justify-between mb-8">
+        <div>
           <h1 className="text-3xl font-bold text-foreground">
             {firstName ? t("dashboard.greeting", { name: firstName }) : t("dashboard.title")}
           </h1>
           <p className="text-muted-foreground mt-1">{t("dashboard.subtitle")}</p>
         </div>
-        <Button onClick={() => setShowAddInvoice(true)} className="gap-2 w-full md:w-auto">
+        <Button onClick={() => setShowAddInvoice(true)} className="gap-2">
           <Plus className="w-4 h-4" />
           {t("dashboard.addInvoice")}
         </Button>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-6 mb-6 md:grid-cols-3">
+      <div className="grid grid-cols-3 gap-6 mb-6">
         <EmergencyFundCard goals={activeGoals} />
 
         <div className="invodata-card p-6">
@@ -351,32 +345,32 @@ const Dashboard = () => {
 
         <div className="invodata-card p-6">
           <div className="flex flex-col space-y-4">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
                   <BarChart3 className="w-6 h-6" />
                 </div>
                 <span className="text-sm text-muted-foreground font-medium">{t("dashboard.summary")}</span>
               </div>
-              <div className="flex flex-col gap-2 sm:items-end">
+              <div className="flex flex-col items-end gap-2">
                 <span className="text-[10px] text-muted-foreground uppercase">{t("dashboard.categoryPeriodLabel")}</span>
-                <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                <div className="grid grid-cols-2 gap-2">
                   <Input
                     value={summaryMonthInput}
                     onChange={(event) => setSummaryMonthInput(event.target.value.replace(/\D/g, "").slice(0, 2))}
                     placeholder="MM"
-                    className="h-8 w-full sm:w-16 text-xs"
+                    className="h-8 w-16 text-xs"
                   />
                   <Input
                     value={summaryYearInput}
                     onChange={(event) => setSummaryYearInput(event.target.value.replace(/\D/g, "").slice(0, 4))}
                     placeholder="YYYY"
-                    className="h-8 w-full sm:w-20 text-xs"
+                    className="h-8 w-20 text-xs"
                   />
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground">
               <span className={includeVatSummary ? "text-foreground font-medium" : undefined}>
                 {t("dashboard.withVat")}
               </span>
@@ -390,7 +384,7 @@ const Dashboard = () => {
               </span>
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-6 text-center mt-5 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-6 text-center mt-5">
             <div>
               <span className="text-xs text-muted-foreground uppercase">{t("dashboard.income")}</span>
               <p className="text-xl font-bold text-foreground">{formatCurrency(summaryRevenue)}</p>
@@ -406,8 +400,8 @@ const Dashboard = () => {
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 gap-6 mb-6 md:grid-cols-3">
-        <div className="md:col-span-2">
+      <div className="grid grid-cols-3 gap-6 mb-6">
+        <div className="col-span-2">
           <RevenueChart data={revenueChartData} />
         </div>
         <div>
@@ -422,13 +416,11 @@ const Dashboard = () => {
                     value={categoryMonthInput}
                     onChange={(event) => setCategoryMonthInput(event.target.value.replace(/\D/g, "").slice(0, 2))}
                     placeholder="MM"
-                    className="w-full"
                   />
                   <Input
                     value={categoryYearInput}
                     onChange={(event) => setCategoryYearInput(event.target.value.replace(/\D/g, "").slice(0, 4))}
                     placeholder="YYYY"
-                    className="w-full"
                   />
                 </div>
               </>
@@ -439,23 +431,6 @@ const Dashboard = () => {
 
       {/* Recent Invoices */}
       <RecentInvoices invoices={recentInvoices} isLoading={isInvoicesLoading || isDashboardLoading} error={recentInvoicesError} />
-
-      <footer className="mt-12 pt-6 border-t border-border">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <p className="text-sm text-muted-foreground">{t("app.footer")}</p>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-            <Link to="/terms" className="hover:text-foreground">
-              {t("auth.termsLink")}
-            </Link>
-            <Link to="/privacy" className="hover:text-foreground">
-              {t("auth.privacyPolicy")}
-            </Link>
-            <a href={surveyUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
-              {surveyLabel}
-            </a>
-          </div>
-        </div>
-      </footer>
 
       {/* Add Invoice Modal */}
       <AddInvoiceModal open={showAddInvoice} onOpenChange={setShowAddInvoice} />

@@ -23,8 +23,7 @@ public record AiExtractionResponse(
             String accountName,
             String accountLast4,
             String licensePlate,
-            String paymentMethod,
-            String category
+            String paymentMethod
     ) {}
 
     public record AiItem(

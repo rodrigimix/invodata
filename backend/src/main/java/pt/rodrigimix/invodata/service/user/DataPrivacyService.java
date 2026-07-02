@@ -1,14 +1,10 @@
 package pt.rodrigimix.invodata.service.user;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 import pt.rodrigimix.invodata.config.AppConfig;
 import pt.rodrigimix.invodata.model.*;
 import pt.rodrigimix.invodata.repository.*;
-import pt.rodrigimix.invodata.service.invoice.storage.InvoiceFileStorage;
-import pt.rodrigimix.invodata.security.encryption.UserCrypto;
-import pt.rodrigimix.invodata.service.system.SystemSettingsService;
 
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamWriter;
@@ -29,13 +25,10 @@ public class DataPrivacyService {
     private final GoalRepository goalRepository;
     private final NotificationRepository notificationRepository;
     private final BalanceHistoryRepository balanceHistoryRepository;
-    private final BudgetRepository budgetRepository;
     private final ChatRepository chatRepository;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatSummaryRepository chatSummaryRepository;
-    private final InvoiceFileStorage invoiceFileStorage;
     private final AppConfig appConfig;
-    private final SystemSettingsService settingsService;
 
     public DataPrivacyService(UserRepository userRepository,
             AccountRepository accountRepository,
@@ -43,26 +36,20 @@ public class DataPrivacyService {
             GoalRepository goalRepository,
             NotificationRepository notificationRepository,
             BalanceHistoryRepository balanceHistoryRepository,
-            BudgetRepository budgetRepository,
             ChatRepository chatRepository,
             ChatSessionRepository chatSessionRepository,
             ChatSummaryRepository chatSummaryRepository,
-            InvoiceFileStorage invoiceFileStorage,
-            AppConfig appConfig,
-            SystemSettingsService settingsService) {
+            AppConfig appConfig) {
         this.userRepository = userRepository;
         this.accountRepository = accountRepository;
         this.invoiceRepository = invoiceRepository;
         this.goalRepository = goalRepository;
         this.notificationRepository = notificationRepository;
         this.balanceHistoryRepository = balanceHistoryRepository;
-        this.budgetRepository = budgetRepository;
         this.chatRepository = chatRepository;
         this.chatSessionRepository = chatSessionRepository;
         this.chatSummaryRepository = chatSummaryRepository;
-        this.invoiceFileStorage = invoiceFileStorage;
         this.appConfig = appConfig;
-        this.settingsService = settingsService;
     }
 
     @Transactional
@@ -79,9 +66,7 @@ public class DataPrivacyService {
     @Transactional
     public byte[] exportUserDataZip(String username) {
         String xml = exportUserDataXml(username);
-        List<FileExportInfo> fileExports = collectUserFileExports(username);
-        List<Map<String, Object>> manifest = new ArrayList<>();
-        ObjectMapper objectMapper = new ObjectMapper();
+        Set<String> fileIds = collectUserFileIds(username);
 
         try (ByteArrayOutputStream out = new ByteArrayOutputStream();
                 ZipOutputStream zip = new ZipOutputStream(out)) {
@@ -90,30 +75,16 @@ public class DataPrivacyService {
             zip.write(xml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             zip.closeEntry();
 
-            for (FileExportInfo fileExport : fileExports) {
-                try {
-                    var fileData = invoiceFileStorage.load(fileExport.fileId());
-                    ZipEntry fileEntry = new ZipEntry("files/" + fileExport.exportName());
-                    zip.putNextEntry(fileEntry);
-                    zip.write(fileData.content());
-                    zip.closeEntry();
-
-                    Map<String, Object> entry = new LinkedHashMap<>();
-                    entry.put("file_id", fileExport.fileId());
-                    entry.put("export_name", fileExport.exportName());
-                    entry.put("original_name", fileExport.originalName());
-                    entry.put("content_type", fileData.contentType());
-                    entry.put("redacted", fileExport.redacted());
-                    manifest.add(entry);
-                } catch (Exception ignored) {
-                    // Skip missing/failed files to avoid breaking export.
+            for (String fileId : fileIds) {
+                Path path = Path.of(appConfig.getMedia_path(), fileId);
+                if (!Files.exists(path) || Files.isDirectory(path)) {
+                    continue;
                 }
+                ZipEntry fileEntry = new ZipEntry("files/" + fileId);
+                zip.putNextEntry(fileEntry);
+                zip.write(Files.readAllBytes(path));
+                zip.closeEntry();
             }
-
-            ZipEntry manifestEntry = new ZipEntry("files/manifest.json");
-            zip.putNextEntry(manifestEntry);
-            zip.write(objectMapper.writeValueAsBytes(manifest));
-            zip.closeEntry();
 
             zip.finish();
             return out.toByteArray();
@@ -122,57 +93,17 @@ public class DataPrivacyService {
         }
     }
 
-    private List<FileExportInfo> collectUserFileExports(String username) {
+    private Set<String> collectUserFileIds(String username) {
         User user = userRepository.findByUsernameIgnoreCase(username)
                 .orElseThrow(() -> new RuntimeException("User not found."));
         List<Invoice> invoices = invoiceRepository.findByUser(user);
-        Map<String, FileExportInfo> exports = new LinkedHashMap<>();
-        Map<String, Integer> nameCounts = new HashMap<>();
-
+        Set<String> fileIds = new LinkedHashSet<>();
         for (Invoice invoice : invoices) {
-            String originalName = invoice.getOriginalFileName();
             if (invoice.getFileID() != null && !invoice.getFileID().isBlank()) {
-                String exportName = buildExportName(originalName, invoice.getFileID(), false, nameCounts);
-                exports.putIfAbsent(invoice.getFileID(),
-                        new FileExportInfo(invoice.getFileID(), exportName, originalName, false));
-            }
-            if (invoice.getRedactedFileID() != null && !invoice.getRedactedFileID().isBlank()) {
-                String exportName = buildExportName(originalName, invoice.getRedactedFileID(), true, nameCounts);
-                exports.putIfAbsent(invoice.getRedactedFileID(),
-                        new FileExportInfo(invoice.getRedactedFileID(), exportName, originalName, true));
+                fileIds.add(invoice.getFileID());
             }
         }
-
-        return new ArrayList<>(exports.values());
-    }
-
-    private String buildExportName(String originalName, String fallbackName, boolean redacted,
-            Map<String, Integer> nameCounts) {
-        String base = (originalName != null && !originalName.isBlank()) ? originalName : fallbackName;
-        String sanitized = base.replaceAll("[\\\\/:*?\"<>|]", "_");
-
-        if (redacted) {
-            int dotIndex = sanitized.lastIndexOf('.');
-            if (dotIndex > 0 && dotIndex < sanitized.length() - 1) {
-                sanitized = sanitized.substring(0, dotIndex) + "-redacted" + sanitized.substring(dotIndex);
-            } else {
-                sanitized = sanitized + "-redacted";
-            }
-        }
-
-        int count = nameCounts.getOrDefault(sanitized, 0);
-        nameCounts.put(sanitized, count + 1);
-        if (count == 0) {
-            return sanitized;
-        }
-        int dotIndex = sanitized.lastIndexOf('.');
-        if (dotIndex > 0 && dotIndex < sanitized.length() - 1) {
-            return sanitized.substring(0, dotIndex) + "_" + count + sanitized.substring(dotIndex);
-        }
-        return sanitized + "_" + count;
-    }
-
-    private record FileExportInfo(String fileId, String exportName, String originalName, boolean redacted) {
+        return fileIds;
     }
 
     private Map<String, Object> buildExport(String username) {
@@ -196,12 +127,7 @@ public class DataPrivacyService {
 
         List<Map<String, Object>> balances = new ArrayList<>();
         for (Account account : accounts) {
-            List<BalanceHistory> historyEntries = balanceHistoryRepository.findByAccount(account)
-                    .stream()
-                    .sorted(java.util.Comparator.comparing(BalanceHistory::getDate,
-                            java.util.Comparator.nullsLast(java.time.LocalDate::compareTo)))
-                    .toList();
-            for (BalanceHistory history : historyEntries) {
+            for (BalanceHistory history : balanceHistoryRepository.findByAccountOrderByDateAsc(account)) {
                 balances.add(mapBalanceHistory(account, history));
             }
         }
@@ -209,14 +135,13 @@ public class DataPrivacyService {
 
         List<ChatSession> sessions = chatSessionRepository.findByUsernameIgnoreCase(username);
         export.put("chat_sessions", sessions.stream().map(this::mapChatSession).toList());
-        List<String> sessionIds = sessions.stream().map(ChatSession::getId).toList();
-        export.put("chat_messages", sessionIds.isEmpty()
-                ? List.of()
-                : chatRepository.findBySessionIdInOrderByTimestampAsc(sessionIds)
-                        .stream()
-                        .map(this::mapChatMessage)
-                        .toList());
 
+        export.put("chat_messages", chatRepository.findByUsernameOrderByTimestampAsc(username)
+                .stream()
+                .map(this::mapChatMessage)
+                .toList());
+
+        List<String> sessionIds = sessions.stream().map(ChatSession::getId).toList();
         export.put("chat_summaries", sessionIds.isEmpty()
                 ? List.of()
                 : chatSummaryRepository.findBySessionIdIn(sessionIds).stream().map(this::mapChatSummary).toList());
@@ -284,9 +209,6 @@ public class DataPrivacyService {
             if (invoice.getFileID() != null && !invoice.getFileID().isBlank()) {
                 fileIds.add(invoice.getFileID());
             }
-            if (invoice.getRedactedFileID() != null && !invoice.getRedactedFileID().isBlank()) {
-                fileIds.add(invoice.getRedactedFileID());
-            }
         }
 
         invoiceRepository.deleteAll(invoices);
@@ -296,7 +218,6 @@ public class DataPrivacyService {
             balanceHistoryRepository.deleteByAccountIn(accounts);
         }
         goalRepository.deleteByUser(user);
-        budgetRepository.deleteByUser(user);
         notificationRepository.deleteByUserId(user.getId());
         accountRepository.deleteByUser(user);
 
@@ -317,12 +238,8 @@ public class DataPrivacyService {
 
     private void deleteFileSafely(String fileId) {
         try {
-            Path path = Path.of(settingsService.resolveStorage().mediaPath(), fileId);
+            Path path = Path.of(appConfig.getMedia_path(), fileId);
             Files.deleteIfExists(path);
-            if ("both".equals(settingsService.getStorageTarget())) {
-                Path nfsPath = Path.of(settingsService.resolveNfsPath(), fileId);
-                Files.deleteIfExists(nfsPath);
-            }
         } catch (Exception ignored) {
             // Best-effort delete to avoid breaking account removal.
         }
@@ -334,14 +251,8 @@ public class DataPrivacyService {
         data.put("username", user.getUsername());
         data.put("name", user.getName());
         data.put("email", user.getEmail());
-        data.put("type", user.getType());
         data.put("created_at", user.getCreatedAt());
         data.put("ai_consent", user.getAiConsent());
-        data.put("ai_consent_at", user.getAiConsentAt());
-        data.put("ai_consent_version", user.getAiConsentVersion());
-        data.put("privacy_consent", user.getPrivacyConsent());
-        data.put("privacy_consent_at", user.getPrivacyConsentAt());
-        data.put("privacy_consent_version", user.getPrivacyConsentVersion());
         return data;
     }
 
@@ -372,7 +283,6 @@ public class DataPrivacyService {
         data.put("notes", invoice.getNotes());
         data.put("file_id", invoice.getFileID());
         data.put("created_at", invoice.getCreatedAt());
-        data.put("category", invoice.getCategory());
 
         Issuer issuer = invoice.getIssuer();
         if (issuer != null) {
@@ -380,6 +290,7 @@ public class DataPrivacyService {
             issuerData.put("tax_id", issuer.getTaxId());
             issuerData.put("name", issuer.getName());
             issuerData.put("country", issuer.getCountry());
+            issuerData.put("category", issuer.getCategory());
             data.put("issuer", issuerData);
         }
 
@@ -428,7 +339,6 @@ public class DataPrivacyService {
         data.put("type", notification.getType());
         data.put("is_read", notification.isRead());
         data.put("created_at", notification.getCreatedAt());
-        data.put("share_id", notification.getShareId());
         return data;
     }
 
@@ -443,12 +353,7 @@ public class DataPrivacyService {
     private Map<String, Object> mapChatSession(ChatSession session) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", session.getId());
-        String title = safeDecrypt(session.getEncryptedTitle());
-        data.put("title", title);
-        if (title == null && session.getEncryptedTitle() != null) {
-            data.put("title_encrypted", session.getEncryptedTitle());
-            data.put("title_decryption_failed", true);
-        }
+        data.put("title", session.getTitle());
         data.put("created_at", session.getCreatedAt());
         data.put("last_activity_at", session.getLastActivityAt());
         return data;
@@ -459,12 +364,7 @@ public class DataPrivacyService {
         data.put("id", message.getId());
         data.put("session_id", message.getSessionId());
         data.put("role", message.getRole());
-        String content = safeDecrypt(message.getEncryptedContent());
-        data.put("content", content);
-        if (content == null && message.getEncryptedContent() != null) {
-            data.put("content_encrypted", message.getEncryptedContent());
-            data.put("content_decryption_failed", true);
-        }
+        data.put("content", message.getContent());
         data.put("timestamp", message.getTimestamp());
         return data;
     }
@@ -474,24 +374,8 @@ public class DataPrivacyService {
         data.put("id", summary.getId());
         data.put("session_id", summary.getSessionId());
         data.put("period", summary.getPeriod());
-        String summaryText = safeDecrypt(summary.getEncryptedSummary());
-        data.put("summary", summaryText);
-        if (summaryText == null && summary.getEncryptedSummary() != null) {
-            data.put("summary_encrypted", summary.getEncryptedSummary());
-            data.put("summary_decryption_failed", true);
-        }
+        data.put("summary", summary.getSummary());
         data.put("created_at", summary.getCreatedAt());
         return data;
-    }
-
-    private String safeDecrypt(String value) {
-        if (value == null) {
-            return null;
-        }
-        try {
-            return UserCrypto.decryptString(value);
-        } catch (Exception e) {
-            return null;
-        }
     }
 }

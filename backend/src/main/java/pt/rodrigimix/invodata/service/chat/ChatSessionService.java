@@ -127,10 +127,9 @@ public class ChatSessionService {
                         .map(msg -> new ChatSessionAiRequest.Message(msg.getRole(), msg.getContent()))
                         .toList(),
                 summary.map(ChatSummary::getSummary).orElse(null),
-                snapshot,
-                LocalDate.now().toString());
+                snapshot);
 
-        String url = appConfig.getPythonApi() + "/api/chat-session";
+        String url = appConfig.getPythonApi() + "/chat-session";
         try {
             ResponseEntity<ChatSessionAiResponse> response = restTemplate.postForEntity(url, new HttpEntity<>(request),
                     ChatSessionAiResponse.class);
@@ -313,7 +312,7 @@ public class ChatSessionService {
                             .month(month)
                             .year(year)
                             .build();
-                    budgetService.saveBudget(budget, user);
+                    budgetService.saveBudget(budget);
                     notes.add("✅ Orçamento criado: " + category);
                 }
                 default -> {

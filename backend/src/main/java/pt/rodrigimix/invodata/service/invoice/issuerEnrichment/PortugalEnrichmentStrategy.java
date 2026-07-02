@@ -12,7 +12,6 @@ import pt.rodrigimix.invodata.model.CountryCode;
 import pt.rodrigimix.invodata.service.ai.AIService;
 import pt.rodrigimix.invodata.service.extraction.VIESService;
 import pt.rodrigimix.invodata.service.extraction.SicaeService;
-import pt.rodrigimix.invodata.service.system.SystemSettingsService;
 
 @Deprecated
 @Component
@@ -24,8 +23,8 @@ public class PortugalEnrichmentStrategy extends EuropeanEnrichmentStrategy {
 
     @Autowired
     public PortugalEnrichmentStrategy(SicaeService sicaeService, VIESService VIESService, AIService aiService,
-            AppConfig appConfig, SystemSettingsService settingsService) {
-        super(VIESService, aiService, appConfig, settingsService);
+            AppConfig appConfig) {
+        super(VIESService, aiService, appConfig);
         this.sicaeService = sicaeService;
     }
 
@@ -34,7 +33,7 @@ public class PortugalEnrichmentStrategy extends EuropeanEnrichmentStrategy {
         logger.info("Starting enrichment process for issuer.");
 
         String category;
-        if (!settingsService.isAiEnabled()) {
+        if (!appConfig.getAiEnabled()) {
             VIESResponse viesResponse = VIESService.validateVat(issuer.getCountry(), issuer.getTaxId());
             if (viesResponse != null && viesResponse.getIsValid()) {
                 logger.debug("VIES validation successful. Setting issuer name.");
@@ -61,7 +60,10 @@ public class PortugalEnrichmentStrategy extends EuropeanEnrichmentStrategy {
             category = aiService.categorizeIssuer(issuer.getName(), null);
         }
 
-        logger.info("Enrichment completed for issuer. Suggested category: {}", category);
+        issuer.setCategory(category);
+
+        logger.info("Enrichment completed for issuer. Assigned category: {}",
+                category);
     }
 
     @Override

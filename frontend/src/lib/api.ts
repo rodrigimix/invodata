@@ -2,11 +2,11 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 const TOKEN_KEY = "invodata_token";
 const USER_KEY = "invodata_user";
 const LANGUAGE_KEY = "invodata_language";
-const USER_ENCRYPTION_KEY = "invodata_user_key";
 
 export interface Issuer {
   name?: string;
   taxId?: string;
+  category?: string;
 }
 
 export interface InvoiceItem {
@@ -19,12 +19,10 @@ export interface InvoiceItem {
 }
 
 export interface Invoice {
-  id?: number;
-  publicId: string;
+  id: number;
   documentNum: string;
   date: string;
   issuer?: Issuer;
-  category?: string | null;
   items?: InvoiceItem[];
   revenue?: boolean;
   totalAmount?: number;
@@ -37,9 +35,6 @@ export interface Invoice {
   redactedFileID?: string;
   originalFileName?: string;
   createdAt?: string;
-  shared?: boolean;
-  sharedBy?: string | null;
-  shareId?: number | null;
   account?: {
     id: number;
     name?: string;
@@ -52,13 +47,9 @@ export interface UserProfile {
   name?: string;
   email?: string;
   taxId?: string;
-  type?: string;
   aiConsent?: boolean;
   language?: string;
-  mfaEnabled?: boolean;
 }
-
-
 
 export interface InvoiceCreatePayload {
   documentNum: string;
@@ -100,19 +91,9 @@ export interface UploadJobStatusResponse {
 }
 
 export interface UploadInvoiceReference {
-  publicId: string;
+  id: number;
   originalFileName?: string;
   documentNum?: string;
-}
-
-export interface NotificationItem {
-  id: number;
-  message: string;
-  type?: string;
-  isRead?: boolean;
-  createdAt?: string;
-  actionUrl?: string | null;
-  shareId?: number | null;
 }
 
 export interface ChatSessionResponse {
@@ -189,155 +170,6 @@ export interface InvoiceTotalsResponse {
   totalAmount: number;
 }
 
-export interface SetupStatus {
-  setupCompleted: boolean;
-  storageTarget: string;
-  localPath: string;
-  nfsPath: string;
-  aiEnabled: boolean;
-  allowPublicShares: boolean;
-}
-
-export interface SetupRequest {
-  adminPassword: string;
-  storageTarget: string;
-  localPath?: string;
-  nfsPath?: string;
-  aiEnabled?: boolean;
-  allowPublicShares?: boolean;
-}
-
-export interface InvoiceShareResponse {
-  id: number;
-  type: "public" | "user";
-  sharedWith?: string | null;
-  token?: string | null;
-  createdAt?: string | null;
-  expiresAt?: string | null;
-}
-
-export interface AdminPublicShareSettings {
-  allowPublicShares: boolean;
-}
-
-export interface AdminStorageSettings {
-  storageTarget: string;
-  localPath: string;
-  nfsPath: string;
-}
-
-export const getAdminPublicShares = async (password: string) => {
-  if (!password) {
-    throw new Error("Password é obrigatória.");
-  }
-
-  return apiFetch<AdminPublicShareSettings>(
-    `/api/admin/public-shares?password=${encodeURIComponent(password)}`
-  );
-};
-
-export const updateAdminPublicShares = async (password: string, allowPublicShares: boolean) => {
-  if (!password) {
-    throw new Error("Password é obrigatória.");
-  }
-
-  return apiFetch<AdminPublicShareSettings>(
-    `/api/admin/public-shares?password=${encodeURIComponent(password)}`,
-    {
-      method: "PUT",
-      body: JSON.stringify({ allowPublicShares }),
-    }
-  );
-};
-
-export const getAdminStorageSettings = async (password: string) => {
-  if (!password) {
-    throw new Error("Password é obrigatoria.");
-  }
-
-  return apiFetch<AdminStorageSettings>(
-    `/api/admin/storage?password=${encodeURIComponent(password)}`
-  );
-};
-
-export const updateAdminStorageSettings = async (password: string, payload: AdminStorageSettings) => {
-  if (!password) {
-    throw new Error("Password é obrigatoria.");
-  }
-
-  return apiFetch<AdminStorageSettings>(
-    `/api/admin/storage?password=${encodeURIComponent(password)}`,
-    {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    }
-  );
-};
-
-export interface InvoiceShareSnapshotItem {
-  description?: string | null;
-  quantity?: number | null;
-  unitPrice?: number | null;
-  totalPrice?: number | null;
-  taxPrice?: number | null;
-  taxPercent?: number | null;
-}
-
-export interface InvoiceShareSnapshot {
-  publicId?: string | null;
-  documentNum?: string | null;
-  date?: string | null;
-  issuerName?: string | null;
-  issuerTaxId?: string | null;
-  category?: string | null;
-  revenue?: boolean | null;
-  totalAmount?: number | null;
-  taxAmount?: number | null;
-  netAmount?: number | null;
-  paymentMethod?: string | null;
-  notes?: string | null;
-  originalFileName?: string | null;
-  createdAt?: string | null;
-  items?: InvoiceShareSnapshotItem[];
-}
-
-export interface InvoiceShareSnapshotResponse {
-  shareId?: number | null;
-  token?: string | null;
-  type: "public" | "user";
-  createdAt?: string | null;
-  expiresAt?: string | null;
-  allowImport?: boolean | null;
-  allowPdf?: boolean | null;
-  allowPdfDownload?: boolean | null;
-  invoice?: InvoiceShareSnapshot | null;
-}
-
-export interface AdminMonthlyCount {
-  month: string;
-  total: number;
-}
-
-export interface AdminStatsResponse {
-  totalUsers: number;
-  totalInvoices: number;
-  uploadedInvoices: number;
-  manualInvoices: number;
-  totalAccounts: number;
-  totalIssuers: number;
-  usersMonthly: AdminMonthlyCount[];
-  invoicesMonthly: AdminMonthlyCount[];
-  generatedAt: string;
-}
-
-export interface AdminUser {
-  id: number;
-  username: string;
-  name?: string | null;
-  email?: string | null;
-  createdAt?: string | null;
-}
-
 export interface EmergencyFundStatus {
   targetAmount: number;
   currentSaved: number;
@@ -353,9 +185,6 @@ export interface Goal {
   currentAmount: number;
   deadline?: string | null;
   completed?: boolean | null;
-  shared?: boolean;
-  sharedBy?: string | null;
-  shareId?: number | null;
   linkedAccount?: {
     id: number;
     name?: string;
@@ -376,12 +205,6 @@ export interface BudgetStatus {
   currentSpending: number;
   remaining: number;
   percentageUsed: number;
-}
-
-export interface InvoiceCategory {
-  id: number;
-  name: string;
-  color: string;
 }
 
 export interface SavingsRateStats {
@@ -415,13 +238,6 @@ export interface MonthlyEvolutionEntry {
 export interface AuthResponse {
   token: string;
   user: UserProfile;
-  mfaTrustToken?: string;
-}
-
-export interface PasswordResetRequestResponse {
-  status: string;
-  resetToken?: string;
-  expiresAt?: string;
 }
 
 export const setAuth = (token: string, user: UserProfile) => {
@@ -454,27 +270,14 @@ export const clearAuth = () => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(LANGUAGE_KEY);
-  sessionStorage.removeItem(USER_ENCRYPTION_KEY);
 };
-
-export const setUserKey = (key: string) => {
-  sessionStorage.setItem(USER_ENCRYPTION_KEY, key);
-};
-
-export const getUserKey = () => sessionStorage.getItem(USER_ENCRYPTION_KEY);
-
-export const clearUserKey = () => sessionStorage.removeItem(USER_ENCRYPTION_KEY);
 
 const apiFetch = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
   const headers = new Headers(options.headers);
   const token = getAuthToken();
-  const userKey = getUserKey();
 
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
-  }
-  if (userKey) {
-    headers.set("X-User-Key", userKey);
   }
 
   const isFormData = options.body instanceof FormData;
@@ -491,13 +294,7 @@ const apiFetch = async <T>(path: string, options: RequestInit = {}): Promise<T> 
     let message = "Erro ao comunicar com o servidor.";
     try {
       const payload = await response.json();
-      const errorCode = payload?.error?.code as string | undefined;
-      if (errorCode === "USER_KEY_REQUIRED") {
-        clearAuth();
-        message = "User encryption key required. Faça login novamente.";
-      } else {
-        message = payload?.error?.message || payload?.message || message;
-      }
+      message = payload?.error?.message || payload?.message || message;
     } catch {
       // Ignore JSON parsing errors.
     }
@@ -508,83 +305,13 @@ const apiFetch = async <T>(path: string, options: RequestInit = {}): Promise<T> 
     return {} as T;
   }
 
-  const contentLength = response.headers.get("content-length");
-  if (contentLength === "0") {
-    return {} as T;
-  }
-
-  const text = await response.text();
-  if (!text) {
-    return {} as T;
-  }
-  return JSON.parse(text) as T;
+  return response.json() as Promise<T>;
 };
 
-export const getSetupStatus = async () =>
-  apiFetch<SetupStatus>("/api/setup/status");
-
-export const completeSetup = async (payload: SetupRequest) =>
-  apiFetch<SetupStatus>("/api/setup", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-
-export const uploadSetupAiCredentials = async (file: File, adminPassword?: string) => {
-  const formData = new FormData();
-  formData.append("file", file);
-  const headers: HeadersInit = {};
-  if (adminPassword) {
-    headers["X-Admin-Password"] = adminPassword;
-  }
-  return apiFetch<void>("/api/setup/ai-credentials", {
-    method: "POST",
-    body: formData,
-    headers,
-  });
-};
-
-export const uploadAdminAiCredentials = async (file: File, adminPassword: string) => {
-  const formData = new FormData();
-  formData.append("file", file);
-  return apiFetch<void>("/api/admin/ai-credentials", {
-    method: "POST",
-    body: formData,
-    headers: {
-      "X-Admin-Password": adminPassword,
-    },
-  });
-};
-
-export const login = async (
-  username: string,
-  password: string,
-  totp?: string,
-  rememberDevice?: boolean,
-  trustToken?: string
-) =>
+export const login = async (username: string, password: string) =>
   apiFetch<AuthResponse>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ username, password, totp, rememberDevice, trustToken }),
-  });
-
-export const getUserEncryptionSalt = async (username: string) =>
-  apiFetch<{ salt: string }>(`/api/auth/salt?username=${encodeURIComponent(username)}`);
-
-export const setupMfa = async () =>
-  apiFetch<{ secret: string; otpauthUrl: string }>("/api/user/mfa/setup", {
-    method: "POST",
-  });
-
-export const enableMfa = async (code: string) =>
-  apiFetch<{ status: string }>("/api/user/mfa/enable", {
-    method: "POST",
-    body: JSON.stringify({ code }),
-  });
-
-export const disableMfa = async (password: string, code: string) =>
-  apiFetch<{ status: string }>("/api/user/mfa/disable", {
-    method: "POST",
-    body: JSON.stringify({ password, code }),
+    body: JSON.stringify({ username, password }),
   });
 
 export const registerUser = async (payload: {
@@ -592,66 +319,13 @@ export const registerUser = async (payload: {
   password: string;
   email: string;
   name: string;
+  adminKey: string;
   aiConsent: boolean;
-  privacyConsent: boolean;
 }) =>
   apiFetch<AuthResponse>("/api/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
   });
-
-export const requestPasswordReset = async (identifier: string) =>
-  apiFetch<{ status: string; resetToken?: string; expiresAt?: string }>("/api/auth/forgot-password", {
-    method: "POST",
-    body: JSON.stringify({ identifier }),
-  });
-
-export const resetPassword = async (token: string, newPassword: string) =>
-  apiFetch<{ status: string }>("/api/auth/reset-password", {
-    method: "POST",
-    body: JSON.stringify({ token, newPassword }),
-  });
-
-export const getNotifications = async () =>
-  apiFetch<NotificationItem[]>("/api/notifications", {
-    method: "GET",
-  });
-
-export const getUnreadNotificationsCount = async () =>
-  apiFetch<number>("/api/notifications/unread-count", {
-    method: "GET",
-  });
-
-export const markNotificationRead = async (id: number) =>
-  apiFetch<void>(`/api/notifications/${id}/read`, {
-    method: "PUT",
-  });
-
-export const markAllNotificationsRead = async () =>
-  apiFetch<void>("/api/notifications/read-all", {
-    method: "PUT",
-  });
-
-export const deleteNotification = async (id: number) =>
-  apiFetch<void>(`/api/notifications/${id}`, {
-    method: "DELETE",
-  });
-
-export const clearNotifications = async () =>
-  apiFetch<void>("/api/notifications", {
-    method: "DELETE",
-  });
-
-export const acceptUserShare = async (shareId: number) =>
-  apiFetch<InvoiceShareSnapshotResponse>(`/api/shares/user/${shareId}/accept`, {
-    method: "POST",
-  });
-
-export const declineUserShare = async (shareId: number) =>
-  apiFetch<void>(`/api/shares/user/${shareId}`, {
-    method: "DELETE",
-  });
-
 
 export const getInvoices = async (
   page = 0,
@@ -755,8 +429,8 @@ export const getInvoiceSummary = async (
   return apiFetch<InvoiceTotalsResponse>(`/api/invoices/summary${suffix ? `?${suffix}` : ""}`);
 };
 
-export const deleteInvoice = async (publicId: string) =>
-  apiFetch<void>(`/api/invoices/${publicId}`, { method: "DELETE" });
+export const deleteInvoice = async (id: number) =>
+  apiFetch<void>(`/api/invoices/${id}`, { method: "DELETE" });
 
 export const createUploadJob = async (
   file: File,
@@ -838,12 +512,6 @@ export const createAccount = async (payload: {
 
 export const getUserProfile = async () => apiFetch<UserProfile>("/api/user/");
 
-
-export const migrateEncryption = async () =>
-  apiFetch<Record<string, number>>("/api/user/migrate-encryption", {
-    method: "POST",
-  });
-
 export const updateUserProfile = async (payload: {
   username?: string;
   name?: string;
@@ -875,13 +543,11 @@ export const updateAiConsent = async (consent: boolean) =>
 
 export const exportUserDataZip = async (password: string) => {
   const token = getAuthToken();
-  const userKey = getUserKey();
   const response = await fetch(`${API_BASE_URL}/api/user/export`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(userKey ? { "X-User-Key": userKey } : {}),
     },
     body: JSON.stringify({ password }),
   });
@@ -890,13 +556,7 @@ export const exportUserDataZip = async (password: string) => {
     let message = "Erro ao comunicar com o servidor.";
     try {
       const payload = await response.json();
-      const errorCode = payload?.error?.code as string | undefined;
-      if (errorCode === "USER_KEY_REQUIRED") {
-        clearAuth();
-        message = "User encryption key required. Faça login novamente.";
-      } else {
-        message = payload?.error?.message || payload?.message || message;
-      }
+      message = payload?.error?.message || payload?.message || message;
     } catch {
       // Ignore JSON parsing errors.
     }
@@ -934,108 +594,8 @@ export const updateAccount = async (id: number, payload: {
 export const deleteAccount = async (id: number) =>
   apiFetch<void>(`/api/user/account/${id}`, { method: "DELETE" });
 
-export const getInvoiceById = async (publicId: string) =>
-  apiFetch<Invoice>(`/api/invoices/${publicId}`);
-
-export const getAdminUsers = async (password: string) =>
-  apiFetch<AdminUser[]>(`/api/admin/users?password=${encodeURIComponent(password)}`);
-
-export const adminResetUserPassword = async (password: string, username: string, newPassword: string) =>
-  apiFetch<void>(`/api/admin/users/reset-password?password=${encodeURIComponent(password)}`, {
-    method: "POST",
-    body: JSON.stringify({ username, newPassword }),
-  });
-
-export const adminDeleteUser = async (password: string, username: string) =>
-  apiFetch<void>(`/api/admin/users/${encodeURIComponent(username)}?password=${encodeURIComponent(password)}`, {
-    method: "DELETE",
-  });
-
-export const createInvoiceShare = async (
-  publicId: string,
-  payload: {
-    username?: string;
-    publicLink?: boolean;
-    expiresInDays?: number;
-    allowImport?: boolean;
-    allowPdf?: boolean;
-    allowPdfDownload?: boolean;
-  }
-) =>
-  apiFetch<InvoiceShareResponse>(`/api/shares/invoices/${publicId}`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-
-export const listInvoiceShares = async (publicId: string) =>
-  apiFetch<InvoiceShareResponse[]>(`/api/shares/invoices/${publicId}`);
-
-export const revokeInvoiceShare = async (publicId: string, shareId: number) =>
-  apiFetch<void>(`/api/shares/invoices/${publicId}/${shareId}`, {
-    method: "DELETE",
-  });
-
-export const getSharedInvoiceByToken = async (token: string) =>
-  apiFetch<InvoiceShareSnapshotResponse>(`/api/shares/token/${token}`);
-
-export const getSharedInvoiceForUser = async (shareId: number) =>
-  apiFetch<InvoiceShareSnapshotResponse>(`/api/shares/user/${shareId}`);
-
-export const downloadSharedInvoiceFileByToken = async (token: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/shares/token/${token}/file`);
-  if (!response.ok) {
-    let message = "Falha ao descarregar o PDF.";
-    try {
-      const payload = await response.json();
-      message = payload?.error?.message || payload?.message || message;
-    } catch {
-      // Ignore JSON parsing errors.
-    }
-    throw new Error(message);
-  }
-  const disposition = response.headers.get("Content-Disposition") || "";
-  const match = disposition.match(/filename="([^"]+)"/i);
-  const filename = match?.[1] || "fatura.pdf";
-  const blob = await response.blob();
-  return { blob, filename };
-};
-
-export const downloadSharedInvoiceFileForUser = async (shareId: number) => {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error("Sessao expirada. Faça login novamente.");
-  }
-  const response = await fetch(`${API_BASE_URL}/api/shares/user/${shareId}/file`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (!response.ok) {
-    let message = "Falha ao descarregar o PDF.";
-    try {
-      const payload = await response.json();
-      message = payload?.error?.message || payload?.message || message;
-    } catch {
-      // Ignore JSON parsing errors.
-    }
-    throw new Error(message);
-  }
-  const disposition = response.headers.get("Content-Disposition") || "";
-  const match = disposition.match(/filename="([^"]+)"/i);
-  const filename = match?.[1] || "fatura.pdf";
-  const blob = await response.blob();
-  return { blob, filename };
-};
-
-export const importSharedInvoiceByToken = async (token: string) =>
-  apiFetch<Invoice>(`/api/shares/import/token/${token}`, {
-    method: "POST",
-  });
-
-export const importSharedInvoiceForUser = async (shareId: number) =>
-  apiFetch<Invoice>(`/api/shares/import/user/${shareId}`, {
-    method: "POST",
-  });
+export const getInvoiceById = async (id: number) =>
+  apiFetch<Invoice>(`/api/invoices/${id}`);
 
 export const createInvoice = async (payload: InvoiceCreatePayload) =>
   apiFetch<Invoice>("/api/invoices", {
@@ -1044,23 +604,13 @@ export const createInvoice = async (payload: InvoiceCreatePayload) =>
   });
 
 export const updateInvoice = async (
-  publicId: string,
+  id: number,
   payload: Partial<InvoiceCreatePayload> & { clearAccount?: boolean }
 ) =>
-  apiFetch<Invoice>(`/api/invoices/${publicId}`, {
+  apiFetch<Invoice>(`/api/invoices/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
-
-export const getInvoiceCategories = async () =>
-  apiFetch<InvoiceCategory[]>("/api/categories");
-
-export const createInvoiceCategory = async (payload: { name: string; color: string }) =>
-  apiFetch<InvoiceCategory>("/api/categories", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-
 
 export const lookupIssuerByTaxId = async (taxId: string) => {
   const token = getAuthToken();
@@ -1247,17 +797,15 @@ export const getMonthlyEvolutionDetailed = async () => {
   });
 };
 
-export const downloadInvoiceFile = async (publicId: string) => {
+export const downloadInvoiceFile = async (id: number) => {
   const token = getAuthToken();
-  const userKey = getUserKey();
   if (!token) {
     throw new Error("Sessao expirada. Faça login novamente.");
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/invoices/${publicId}/file`, {
+  const response = await fetch(`${API_BASE_URL}/api/invoices/${id}/file`, {
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(userKey ? { "X-User-Key": userKey } : {}),
     },
   });
 
@@ -1265,13 +813,7 @@ export const downloadInvoiceFile = async (publicId: string) => {
     let message = "Falha ao descarregar a fatura.";
     try {
       const payload = await response.json();
-      const errorCode = payload?.error?.code as string | undefined;
-      if (errorCode === "USER_KEY_REQUIRED") {
-        clearAuth();
-        message = "User encryption key required. Faça login novamente.";
-      } else {
-        message = payload?.error?.message || payload?.message || message;
-      }
+      message = payload?.error?.message || payload?.message || message;
     } catch {
       // Ignore JSON parsing errors.
     }
@@ -1280,22 +822,20 @@ export const downloadInvoiceFile = async (publicId: string) => {
 
   const disposition = response.headers.get("Content-Disposition") || "";
   const match = disposition.match(/filename="([^"]+)"/i);
-  const filename = match?.[1] || `fatura-${publicId}.pdf`;
+  const filename = match?.[1] || `fatura-${id}.pdf`;
   const blob = await response.blob();
   return { blob, filename };
 };
 
-export const downloadRedactedInvoiceFile = async (publicId: string) => {
+export const downloadRedactedInvoiceFile = async (id: number) => {
   const token = getAuthToken();
-  const userKey = getUserKey();
   if (!token) {
     throw new Error("Sessao expirada. Faça login novamente.");
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/invoices/${publicId}/file/redacted`, {
+  const response = await fetch(`${API_BASE_URL}/api/invoices/${id}/file/redacted`, {
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(userKey ? { "X-User-Key": userKey } : {}),
     },
   });
 
@@ -1303,13 +843,7 @@ export const downloadRedactedInvoiceFile = async (publicId: string) => {
     let message = "Falha ao descarregar a fatura mascarada.";
     try {
       const payload = await response.json();
-      const errorCode = payload?.error?.code as string | undefined;
-      if (errorCode === "USER_KEY_REQUIRED") {
-        clearAuth();
-        message = "User encryption key required. Faça login novamente.";
-      } else {
-        message = payload?.error?.message || payload?.message || message;
-      }
+      message = payload?.error?.message || payload?.message || message;
     } catch {
       // Ignore JSON parsing errors.
     }
@@ -1318,7 +852,7 @@ export const downloadRedactedInvoiceFile = async (publicId: string) => {
 
   const disposition = response.headers.get("Content-Disposition") || "";
   const match = disposition.match(/filename="([^"]+)"/i);
-  const filename = match?.[1] || `fatura-${publicId}-mascarada.pdf`;
+  const filename = match?.[1] || `fatura-${id}-mascarada.pdf`;
   const blob = await response.blob();
   return { blob, filename };
 };
@@ -1333,7 +867,6 @@ export const requestRedactedPreview = async (
   }
 ) => {
   const token = getAuthToken();
-  const userKey = getUserKey();
   if (!token) {
     throw new Error("Sessao expirada. Faça login novamente.");
   }
@@ -1355,7 +888,6 @@ export const requestRedactedPreview = async (
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(userKey ? { "X-User-Key": userKey } : {}),
     },
     body: formData,
   });
@@ -1374,34 +906,69 @@ export const requestRedactedPreview = async (
   return { blob, contentType };
 };
 
-export const getAdminStats = async (password: string, months: number = 6) => {
-  if (!password) {
-    throw new Error("Password é obrigatória.");
-  }
+export interface CustomCategory {
+  id: number;
+  name: string;
+  color?: string;
+}
 
-  const params = new URLSearchParams();
-  if (months) {
-    params.set("months", String(months));
+export const getCustomCategories = async (): Promise<CustomCategory[]> => {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error("Sessao expirada. Faça login novamente.");
   }
-  const suffix = params.toString();
-
-  const response = await fetch(`${API_BASE_URL}/api/admin/stats${suffix ? `?${suffix}` : ""}`, {
+  const response = await fetch(`${API_BASE_URL}/api/custom-categories`, {
     method: "GET",
     headers: {
-      "X-Admin-Password": password,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
-
   if (!response.ok) {
-    let message = "Erro ao comunicar com o servidor.";
+    throw new Error("Failed to fetch custom categories");
+  }
+  return response.json();
+};
+
+export const createCustomCategory = async (name: string, color?: string): Promise<CustomCategory> => {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error("Sessao expirada. Faça login novamente.");
+  }
+  const response = await fetch(`${API_BASE_URL}/api/custom-categories`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: name.trim(), color: color || "#3B82F6" }),
+  });
+  if (!response.ok) {
+    let message = "Failed to create custom category";
     try {
       const payload = await response.json();
-      message = payload?.error?.message || payload?.message || message;
+      message = payload?.message || message;
     } catch {
-      // Ignore JSON parsing errors.
+      // Ignore
     }
     throw new Error(message);
   }
-
-  return (await response.json()) as AdminStatsResponse;
+  return response.json();
 };
+
+export const deleteCustomCategory = async (id: number): Promise<void> => {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error("Sessao expirada. Faça login novamente.");
+  }
+  const response = await fetch(`${API_BASE_URL}/api/custom-categories/${id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error("Failed to delete custom category");
+  }
+};
+

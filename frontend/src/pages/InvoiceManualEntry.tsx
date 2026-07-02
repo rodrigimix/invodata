@@ -6,14 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
@@ -35,14 +27,14 @@ import { Plus, Trash2, Info, ChevronsUpDown, Check, Send, X, Calendar as Calenda
 import { format, parse } from "date-fns";
 import {
   createInvoice,
-  createInvoiceCategory,
+  createCustomCategory,
   getAccounts,
-  getInvoiceCategories,
+  getCustomCategories,
   getInvoiceById,
   lookupIssuerByTaxId,
   updateInvoice,
   type Account,
-  type InvoiceCategory,
+  type CustomCategory,
   type InvoiceItem,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -374,13 +366,6 @@ const toIsoDate = (value: string) => {
   return `${yearStr}-${monthStr}-${dayStr}`;
 };
 
-const formatDateInput = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-};
-
 const toDisplayDate = (value?: string | null) => {
   if (!value) return "";
   const parts = value.split("T")[0]?.split("-");
@@ -403,8 +388,8 @@ const InvoiceManualEntry = () => {
   const locale = i18n.language === "pt" ? "pt-PT" : "en-US";
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(value);
-  const invoiceId = id || null;
-  const isEditing = Boolean(invoiceId);
+  const invoiceId = id ? Number(id) : null;
+  const isEditing = Boolean(invoiceId && !Number.isNaN(invoiceId));
   const [documentNum, setDocumentNum] = useState("");
   const [date, setDate] = useState("");
   const [revenue, setRevenue] = useState(false);
@@ -414,13 +399,6 @@ const InvoiceManualEntry = () => {
   const [issuerTaxId, setIssuerTaxId] = useState("");
   const [issuerCountry, setIssuerCountry] = useState("PT");
   const [issuerCategory, setIssuerCategory] = useState("none");
-  const [categories, setCategories] = useState<InvoiceCategory[]>([]);
-  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
-  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryColor, setNewCategoryColor] = useState("#64748B");
-  const [categoryError, setCategoryError] = useState<string | null>(null);
-  const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [issuerNameLocked, setIssuerNameLocked] = useState(false);
   const [issuerNameAuto, setIssuerNameAuto] = useState(false);
   const [issuerLookupStatus, setIssuerLookupStatus] = useState<"idle" | "loading" | "found" | "not_found">("idle");
@@ -437,9 +415,14 @@ const InvoiceManualEntry = () => {
   const [countryOpen, setCountryOpen] = useState(false);
   const [drafts, setDrafts] = useState<InvoiceDraft[]>([]);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryColor, setNewCategoryColor] = useState("#3B82F6");
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
 
-  const issuerCategoryOptions = useMemo(() => {
-    const base: Array<{ value: string; label: string; color?: string }> = [
+  const issuerCategoryOptions = useMemo(
+    () => [
       { value: "none", label: t("invoiceManual.issuer.categoryNone") },
       { value: "REVENUE", label: t("issuerCategories.REVENUE") },
       { value: "FUEL", label: t("issuerCategories.FUEL") },
@@ -453,25 +436,22 @@ const InvoiceManualEntry = () => {
       { value: "EDUCATION", label: t("issuerCategories.EDUCATION") },
       { value: "ENTERTAINMENT", label: t("issuerCategories.ENTERTAINMENT") },
       { value: "SERVICES", label: t("issuerCategories.SERVICES") },
-    ];
-    const seen = new Set(base.map((entry) => entry.value.toUpperCase()));
-    const custom: Array<{ value: string; label: string; color?: string }> = categories
-      .filter((category) => !seen.has(category.name.toUpperCase()))
-      .map((category) => ({
-        value: category.name,
-        label: category.name,
-        color: category.color,
-      }));
-    return [...base, ...custom];
-  }, [categories, t]);
+      ...customCategories.map((cat) => ({
+        value: `CUSTOM_${cat.id}`,
+        label: cat.name,
+        color: cat.color || "#3B82F6",
+      })),
+    ],
+    [t, customCategories]
+  );
 
   useEffect(() => {
-    if (revenue) {
+    // When user changes invoice type to "Revenue", auto-set category to REVENUE
+    // But only if we're NOT loading an invoice (isLoadingInvoice = true)
+    if (revenue && !isLoadingInvoice && issuerCategory !== "REVENUE") {
       setIssuerCategory("REVENUE");
-    } else if (issuerCategory === "REVENUE") {
-      setIssuerCategory("none");
     }
-  }, [revenue, issuerCategory]);
+  }, [revenue, isLoadingInvoice]);
 
   const selectedCountry = countryOptions.find((country) => country.code === issuerCountry);
   const selectedCountryLabel = selectedCountry
@@ -495,26 +475,6 @@ const InvoiceManualEntry = () => {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    setIsLoadingCategories(true);
-    getInvoiceCategories()
-      .then((data) => {
-        if (!isMounted) return;
-        setCategories(data || []);
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        setCategories([]);
-      })
-      .finally(() => {
-        if (isMounted) setIsLoadingCategories(false);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
     if (isEditing) return;
     const stored = localStorage.getItem("invodata_invoice_drafts");
     if (!stored) return;
@@ -527,95 +487,92 @@ const InvoiceManualEntry = () => {
   }, [isEditing]);
 
   useEffect(() => {
-    if (isEditing) return;
-    localStorage.setItem("invodata_invoice_drafts", JSON.stringify(drafts));
-  }, [drafts, isEditing]);
-
-  useEffect(() => {
-    if (!isEditing || invoiceId === null) return;
     let isMounted = true;
-    setIsLoadingInvoice(true);
-    getInvoiceById(invoiceId)
-      .then((invoice) => {
+    getCustomCategories()
+      .then((categories) => {
         if (!isMounted) return;
-        const parsedItems =
-          invoice.items?.map((item) => ({
-            description: item.description || "",
-            quantity: item.quantity !== undefined ? String(item.quantity) : "1",
-            unitPrice: item.unitPrice !== undefined ? String(item.unitPrice) : "",
-            taxPercent: item.taxPercent !== undefined ? String(item.taxPercent) : "0",
-          })) || [{ ...emptyItem }];
-        const issuerTaxIdRaw = invoice.issuer?.taxId || "";
-        const countryMatch = issuerTaxIdRaw.match(/^[a-zA-Z]{2}/);
-        const countryCode = countryMatch ? countryMatch[0].toUpperCase() : "PT";
-        const taxIdValue = countryMatch ? issuerTaxIdRaw.slice(2) : issuerTaxIdRaw;
-        setDocumentNum(invoice.documentNum || "");
-        setDate(toDisplayDate(invoice.date));
-        setRevenue(Boolean(invoice.revenue));
-        setPaymentMethod(invoice.paymentMethod || "");
-        setLicensePlate(invoice.licensePlate || "");
-        setIssuerName(invoice.issuer?.name || "");
-        setIssuerTaxId(taxIdValue);
-        setIssuerCountry(countryCode);
-        setIssuerCategory(invoice.category || "none");
-        setNotes(invoice.notes || "");
-        setItems(parsedItems.length > 0 ? parsedItems : [{ ...emptyItem }]);
-        setAccountId(invoice.account?.id ?? null);
-        setOriginalAccountId(invoice.account?.id ?? null);
-        setIssuerNameLocked(false);
-        setIssuerNameAuto(false);
-        setIssuerLookupStatus("idle");
-        setIssuerLookupMessage(null);
-        setFieldErrors({});
-        setFormError(null);
+        setCustomCategories(categories || []);
       })
       .catch((err) => {
         if (!isMounted) return;
-        const message = err instanceof Error ? err.message : t("invoiceManual.errors.load");
-        setFormError(message);
-      })
-      .finally(() => {
-        if (isMounted) setIsLoadingInvoice(false);
+        console.warn("Failed to load custom categories:", err);
+        setCustomCategories([]);
       });
     return () => {
       isMounted = false;
     };
-  }, [invoiceId, isEditing, t]);
+  }, []);
 
-  const handleCreateCategory = async () => {
-    if (isSavingCategory) return;
-    setCategoryError(null);
-    const name = newCategoryName.trim();
-    if (!name) {
-      setCategoryError(t("invoiceManual.issuer.categoryNameRequired"));
-      return;
-    }
-    if (!/^#[0-9A-Fa-f]{6}$/.test(newCategoryColor)) {
-      setCategoryError(t("invoiceManual.issuer.categoryColorInvalid"));
-      return;
-    }
-    setIsSavingCategory(true);
-    try {
-      const created = await createInvoiceCategory({
-        name,
-        color: newCategoryColor,
-      });
-      setCategories((current) => {
-        const filtered = current.filter(
-          (category) => category.name.toUpperCase() !== created.name.toUpperCase()
-        );
-        return [...filtered, created].sort((a, b) => a.name.localeCompare(b.name));
-      });
-      setIssuerCategory(created.name);
-      setNewCategoryName("");
-      setCategoryDialogOpen(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t("invoiceManual.issuer.categoryCreateError");
-      setCategoryError(message);
-    } finally {
-      setIsSavingCategory(false);
-    }
-  };
+  useEffect(() => {
+    if (isEditing) return;
+    localStorage.setItem("invodata_invoice_drafts", JSON.stringify(drafts));
+  }, [drafts, isEditing]);
+
+   useEffect(() => {
+     if (!isEditing || invoiceId === null) return;
+     let isMounted = true;
+     setIsLoadingInvoice(true);
+     getInvoiceById(invoiceId)
+       .then((invoice) => {
+         if (!isMounted) return;
+         const parsedItems =
+           invoice.items?.map((item) => ({
+             description: item.description || "",
+             quantity: item.quantity !== undefined ? String(item.quantity) : "1",
+             unitPrice: item.unitPrice !== undefined ? String(item.unitPrice) : "",
+             taxPercent: item.taxPercent !== undefined ? String(item.taxPercent) : "0",
+           })) || [{ ...emptyItem }];
+         const issuerTaxIdRaw = invoice.issuer?.taxId || "";
+         const countryMatch = issuerTaxIdRaw.match(/^[a-zA-Z]{2}/);
+         const countryCode = countryMatch ? countryMatch[0].toUpperCase() : "PT";
+         const taxIdValue = countryMatch ? issuerTaxIdRaw.slice(2) : issuerTaxIdRaw;
+
+         // Handle category - if it's a custom category reference, validate it exists
+         let categoryToSet = invoice.issuer?.category || "none";
+         if (categoryToSet && categoryToSet.startsWith("CUSTOM_")) {
+           // Verify the custom category still exists
+           const customCatId = Number.parseInt(categoryToSet.split("_")[1], 10);
+           const exists = customCategories.some((cat) => cat.id === customCatId);
+           if (!exists) {
+             // If custom category doesn't exist anymore, set to none
+             categoryToSet = "none";
+           }
+         }
+
+         setDocumentNum(invoice.documentNum || "");
+         setDate(toDisplayDate(invoice.date));
+         setPaymentMethod(invoice.paymentMethod || "");
+         setLicensePlate(invoice.licensePlate || "");
+         setIssuerName(invoice.issuer?.name || "");
+         setIssuerTaxId(taxIdValue);
+         setIssuerCountry(countryCode);
+         // Set category BEFORE revenue, so the revenue handler doesn't override it
+         setIssuerCategory(categoryToSet);
+         setNotes(invoice.notes || "");
+         setItems(parsedItems.length > 0 ? parsedItems : [{ ...emptyItem }]);
+         setAccountId(invoice.account?.id ?? null);
+         setOriginalAccountId(invoice.account?.id ?? null);
+         setIssuerNameLocked(false);
+         setIssuerNameAuto(false);
+         setIssuerLookupStatus("idle");
+         setIssuerLookupMessage(null);
+         setFieldErrors({});
+         setFormError(null);
+         // Set revenue LAST so the revenue-watching useEffect doesn't interfere
+         setRevenue(Boolean(invoice.revenue));
+       })
+       .catch((err) => {
+         if (!isMounted) return;
+         const message = err instanceof Error ? err.message : t("invoiceManual.errors.load");
+         setFormError(message);
+       })
+       .finally(() => {
+         if (isMounted) setIsLoadingInvoice(false);
+       });
+     return () => {
+       isMounted = false;
+     };
+   }, [invoiceId, isEditing, t, customCategories]);
 
   const computed = useMemo(() => {
     const lines = items.map((item) => {
@@ -707,7 +664,7 @@ const InvoiceManualEntry = () => {
     if (issuerTaxId.trim() && !/^[a-zA-Z0-9]+$/.test(normalizedTaxId)) {
       errors.issuerTaxId = t("invoiceManual.errors.taxIdInvalid");
     }
-    if (hasIssuerTaxId && !hasIssuerName) {
+    if (hasIssuerTaxId !== hasIssuerName) {
       const message = t("invoiceManual.errors.taxIdNameMismatch");
       errors.issuerTaxId = message;
       errors.issuerName = message;
@@ -748,8 +705,8 @@ const InvoiceManualEntry = () => {
         licensePlate: licensePlate.trim() || undefined,
         paymentMethod: paymentMethod.trim() || undefined,
         notes: notes.trim() || undefined,
-        issuerName: hasIssuerName ? titleCase(trimmedIssuerName) : undefined,
-        issuerTaxId: hasIssuerTaxId ? `${issuerCountry}${normalizedTaxId}` : undefined,
+        issuerName: hasIssuerTaxId && hasIssuerName ? titleCase(trimmedIssuerName) : undefined,
+        issuerTaxId: hasIssuerTaxId && hasIssuerName ? `${issuerCountry}${normalizedTaxId}` : undefined,
         issuerCategory: issuerCategory !== "none" ? issuerCategory : undefined,
         items: itemsPayload,
         accountId: accountId ?? undefined,
@@ -766,7 +723,7 @@ const InvoiceManualEntry = () => {
         });
         setActiveDraftId(null);
       }
-      navigate(`/invoices/${invoice.publicId}`);
+      navigate(`/invoices/${invoice.id}`);
     } catch (err) {
       const message = err instanceof Error
         ? err.message
@@ -872,6 +829,7 @@ const InvoiceManualEntry = () => {
         setIssuerNameAuto(true);
         setIssuerLookupStatus("found");
         setIssuerLookupMessage(t("invoiceManual.lookup.found"));
+        setIssuerCategory(issuer.category || "none");
       } else {
         setIssuerLookupStatus("not_found");
         setIssuerNameLocked(false);
@@ -886,9 +844,27 @@ const InvoiceManualEntry = () => {
     }
   };
 
+  const handleAddCustomCategory = async () => {
+    const trimmedName = newCategoryName.trim();
+    if (!trimmedName) return;
+
+    setIsCreatingCategory(true);
+    try {
+      const newCategory = await createCustomCategory(trimmedName, newCategoryColor);
+      setCustomCategories((current) => [...current, newCategory]);
+      setNewCategoryName("");
+      setNewCategoryColor("#3B82F6");
+      setShowNewCategoryInput(false);
+    } catch (err) {
+      console.error("Failed to create custom category:", err);
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  };
+
   return (
     <DashboardLayout>
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <Breadcrumb>
             <BreadcrumbList>
@@ -922,11 +898,11 @@ const InvoiceManualEntry = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-2 space-y-6">
           <div className="invodata-card p-6">
             <h2 className="text-lg font-semibold text-foreground mb-4">{t("invoiceManual.invoiceData.title")}</h2>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="text-sm text-muted-foreground">
                   {t("invoiceManual.invoiceData.documentNumber")} <span className="text-danger">*</span>
@@ -950,51 +926,37 @@ const InvoiceManualEntry = () => {
                 <label className="text-sm text-muted-foreground">
                   {t("invoiceManual.invoiceData.issueDate")} <span className="text-danger">*</span>
                 </label>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Input
-                    placeholder={t("invoiceManual.invoiceData.issueDatePlaceholder")}
-                    value={date}
-                    onChange={(event) => {
-                      setDate(formatDateInput(event.target.value));
-                      if (fieldErrors.date) {
-                        setFieldErrors((current) => {
-                          const { date, ...rest } = current;
-                          return rest;
-                        });
-                      }
-                    }}
-                    className={cn(fieldErrors.date ? "border-danger focus-visible:ring-danger" : "")}
-                  />
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label={t("invoiceManual.invoiceData.issueDate")}
-                        className={cn("w-full sm:w-auto", fieldErrors.date ? "border-danger focus-visible:ring-danger" : "")}
-                      >
-                        <CalendarIcon className="h-4 w-4" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={date ? parseDisplayDate(date) : undefined}
-                        onSelect={(value) => {
-                          setDate(value ? format(value, "dd/MM/yyyy") : "");
-                          if (fieldErrors.date) {
-                            setFieldErrors((current) => {
-                              const { date, ...rest } = current;
-                              return rest;
-                            });
-                          }
-                        }}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "mt-2 w-full justify-start text-left font-normal",
+                        !date && "text-muted-foreground",
+                        fieldErrors.date ? "border-danger focus-visible:ring-danger" : "",
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {date || t("invoiceManual.invoiceData.issueDatePlaceholder")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={date ? parseDisplayDate(date) : undefined}
+                      onSelect={(value) => {
+                        setDate(value ? format(value, "dd/MM/yyyy") : "");
+                        if (fieldErrors.date) {
+                          setFieldErrors((current) => {
+                            const { date, ...rest } = current;
+                            return rest;
+                          });
+                        }
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               <div>
                 <label className="text-sm text-muted-foreground">
@@ -1052,7 +1014,7 @@ const InvoiceManualEntry = () => {
 
           <div className="invodata-card p-6">
             <h2 className="text-lg font-semibold text-foreground mb-4">{t("invoiceManual.issuer.title")}</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm text-muted-foreground">{t("invoiceManual.issuer.country")}</label>
                 <Popover open={countryOpen} onOpenChange={setCountryOpen}>
@@ -1112,7 +1074,7 @@ const InvoiceManualEntry = () => {
               </div>
               <div>
                 <label className="text-sm text-muted-foreground">{t("invoiceManual.issuer.taxId")}</label>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="mt-2 flex items-center gap-2">
                   <span className="px-3 py-2 rounded-md border border-border bg-muted text-sm font-medium text-muted-foreground">
                     {issuerCountry}
                   </span>
@@ -1147,7 +1109,7 @@ const InvoiceManualEntry = () => {
                   <p className="text-xs text-muted-foreground mt-2">{issuerLookupMessage}</p>
                 )}
               </div>
-              <div className="sm:col-span-2">
+              <div className="col-span-2">
                 <label className="text-sm text-muted-foreground">{t("invoiceManual.issuer.name")}</label>
                 <Input
                   placeholder={t("invoiceManual.issuer.namePlaceholder")}
@@ -1170,54 +1132,114 @@ const InvoiceManualEntry = () => {
                   disabled={issuerNameLocked}
                 />
               </div>
-              <div className="sm:col-span-2">
-                <label className="text-sm text-muted-foreground">{t("invoiceManual.issuer.category")}</label>
-                <div className="mt-2 flex items-center gap-2">
-                  <Select value={issuerCategory} onValueChange={setIssuerCategory} disabled={revenue}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder={t("invoiceManual.issuer.categoryPlaceholder")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {issuerCategoryOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          <span className="flex items-center gap-2">
-                            {option.color ? (
-                              <span
-                                className="h-2.5 w-2.5 rounded-full border border-border"
-                                style={{ backgroundColor: option.color }}
-                              />
-                            ) : null}
-                            {option.label}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={() => {
-                      setCategoryError(null);
-                      setCategoryDialogOpen(true);
-                    }}
-                    disabled={isLoadingCategories}
-                  >
-                    {t("invoiceManual.issuer.categoryCreate")}
-                  </Button>
-                </div>
-              </div>
+               <div className="col-span-2">
+                 <label className="text-sm text-muted-foreground">{t("invoiceManual.issuer.category")}</label>
+                 <div className="space-y-2 mt-2">
+                   <Select value={issuerCategory} onValueChange={setIssuerCategory} disabled={revenue}>
+                     <SelectTrigger className="mt-0">
+                       <SelectValue placeholder={t("invoiceManual.issuer.categoryPlaceholder")} />
+                     </SelectTrigger>
+                      <SelectContent>
+                        {issuerCategoryOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            <div className="flex items-center gap-2">
+                              {option.color && (
+                                <div
+                                  className="w-3 h-3 rounded-full border border-border"
+                                  style={{ backgroundColor: option.color }}
+                                />
+                              )}
+                              {option.label}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                   </Select>
+                   {!revenue && (
+                     <>
+                       {showNewCategoryInput ? (
+                         <div className="space-y-3">
+                           <div className="flex gap-2">
+                             <Input
+                               placeholder={t("invoiceManual.issuer.newCategoryPlaceholder") || "New category name..."}
+                               value={newCategoryName}
+                               onChange={(e) => setNewCategoryName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !isCreatingCategory) {
+                                    handleAddCustomCategory();
+                                  } else if (e.key === "Escape") {
+                                    setShowNewCategoryInput(false);
+                                    setNewCategoryName("");
+                                    setNewCategoryColor("#3B82F6");
+                                  }
+                                }}
+                               disabled={isCreatingCategory}
+                               autoFocus
+                             />
+                           </div>
+                           <div className="flex items-center gap-3">
+                             <label className="text-sm text-muted-foreground">{t("common.color")}</label>
+                             <div className="flex items-center gap-2">
+                               <input
+                                 type="color"
+                                 value={newCategoryColor}
+                                 onChange={(e) => setNewCategoryColor(e.target.value)}
+                                 disabled={isCreatingCategory}
+                                 className="h-10 w-16 rounded border border-border cursor-pointer"
+                               />
+                               <span className="text-xs text-muted-foreground">{newCategoryColor}</span>
+                             </div>
+                           </div>
+                           <div className="flex gap-2">
+                             <Button
+                               size="sm"
+                               variant="outline"
+                               onClick={handleAddCustomCategory}
+                               disabled={!newCategoryName.trim() || isCreatingCategory}
+                               className="flex-1"
+                             >
+                               {isCreatingCategory ? t("common.saving") : t("invoiceManual.issuer.createCategory")}
+                             </Button>
+                             <Button
+                               size="sm"
+                               variant="outline"
+                               onClick={() => {
+                                 setShowNewCategoryInput(false);
+                                 setNewCategoryName("");
+                                 setNewCategoryColor("#3B82F6");
+                               }}
+                               disabled={isCreatingCategory}
+                               className="flex-1"
+                             >
+                               {t("invoiceManual.issuer.cancel")}
+                             </Button>
+                           </div>
+                         </div>
+                       ) : (
+                         <Button
+                           size="sm"
+                           variant="outline"
+                           className="w-full gap-2"
+                           onClick={() => setShowNewCategoryInput(true)}
+                         >
+                           <Plus className="w-4 h-4" />
+                           {t("invoiceManual.issuer.addCustomCategory") || "Add Custom Category"}
+                         </Button>
+                       )}
+                     </>
+                   )}
+                 </div>
+               </div>
             </div>
           </div>
 
           <div className="invodata-card">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-6 border-b border-border">
+            <div className="flex items-center justify-between p-6 border-b border-border">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">{t("invoiceManual.items.title")}</h2>
                 <p className="text-sm text-muted-foreground">{t("invoiceManual.items.subtitle")}</p>
               </div>
-              <Button variant="outline" className="gap-2 w-full sm:w-auto" onClick={handleAddItem}>
+              <Button variant="outline" className="gap-2" onClick={handleAddItem}>
                 <Plus className="w-4 h-4" />
                 {t("invoiceManual.items.addLine")}
               </Button>
@@ -1226,7 +1248,7 @@ const InvoiceManualEntry = () => {
               <div className="px-6 pt-4 text-sm text-danger">{fieldErrors.items}</div>
             )}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px]">
+              <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">
@@ -1238,10 +1260,10 @@ const InvoiceManualEntry = () => {
                     <th className="text-right text-xs font-medium text-muted-foreground uppercase px-6 py-4">
                       {t("invoiceManual.items.table.unitPrice")} <span className="text-danger">*</span>
                     </th>
-                    <th className="hidden sm:table-cell text-right text-xs font-medium text-muted-foreground uppercase px-6 py-4">
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase px-6 py-4">
                       {t("invoiceManual.items.table.vatPercent")} <span className="text-danger">*</span>
                     </th>
-                    <th className="hidden sm:table-cell text-right text-xs font-medium text-muted-foreground uppercase px-6 py-4">
+                    <th className="text-right text-xs font-medium text-muted-foreground uppercase px-6 py-4">
                       {t("invoiceManual.items.table.vat")}
                     </th>
                     <th className="text-right text-xs font-medium text-muted-foreground uppercase px-6 py-4">
@@ -1294,7 +1316,7 @@ const InvoiceManualEntry = () => {
                             onChange={(event) => handleItemChange(index, "taxPercent", event.target.value)}
                           />
                         </td>
-                        <td className="hidden sm:table-cell px-6 py-4 text-right font-medium text-foreground">
+                        <td className="px-6 py-4 text-right font-medium text-foreground">
                           {formatCurrency(line.tax)}
                         </td>
                         <td className="px-6 py-4 text-right font-medium text-foreground">
@@ -1444,56 +1466,6 @@ const InvoiceManualEntry = () => {
           )}
         </div>
       </div>
-
-      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("invoiceManual.issuer.categoryCreateTitle")}</DialogTitle>
-            <DialogDescription>{t("invoiceManual.issuer.categoryCreateHint")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm text-muted-foreground">{t("invoiceManual.issuer.categoryName")}</label>
-              <Input
-                value={newCategoryName}
-                onChange={(event) => setNewCategoryName(event.target.value)}
-                placeholder={t("invoiceManual.issuer.categoryNamePlaceholder")}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-muted-foreground">{t("invoiceManual.issuer.categoryColor")}</label>
-              <div className="flex items-center gap-3">
-                <Input
-                  type="color"
-                  value={newCategoryColor}
-                  onChange={(event) => setNewCategoryColor(event.target.value)}
-                  className="h-10 w-16 p-1"
-                />
-                <Input
-                  value={newCategoryColor}
-                  onChange={(event) => setNewCategoryColor(event.target.value)}
-                  placeholder="#64748B"
-                />
-              </div>
-            </div>
-            {categoryError && (
-              <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
-                {categoryError}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCategoryDialogOpen(false)}>
-              {t("invoiceManual.actions.cancel")}
-            </Button>
-            <Button onClick={handleCreateCategory} disabled={isSavingCategory}>
-              {isSavingCategory
-                ? t("invoiceManual.issuer.categoryCreating")
-                : t("invoiceManual.issuer.categoryCreateConfirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </DashboardLayout>
   );
 };

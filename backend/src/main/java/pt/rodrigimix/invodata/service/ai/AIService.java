@@ -18,8 +18,7 @@ import pt.rodrigimix.invodata.model.Account;
 import pt.rodrigimix.invodata.model.Item;
 import pt.rodrigimix.invodata.model.User;
 import pt.rodrigimix.invodata.service.account.AccountService;
-import pt.rodrigimix.invodata.service.invoice.category.InvoiceCategoryService;
-import pt.rodrigimix.invodata.service.system.SystemSettingsService;
+import pt.rodrigimix.invodata.service.category.CustomCategoryService;
 
 import java.util.Arrays;
 import java.util.List;
@@ -34,9 +33,7 @@ public class AIService {
 
     private final AccountService accountService;
 
-    private final SystemSettingsService settingsService;
-
-    private final InvoiceCategoryService categoryService;
+    private final CustomCategoryService customCategoryService;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -54,12 +51,10 @@ public class AIService {
             "CLOTHING");
 
     @Autowired
-    public AIService(AppConfig appConfig, AccountService accountService, SystemSettingsService settingsService,
-            InvoiceCategoryService categoryService) {
+    public AIService(AppConfig appConfig, AccountService accountService, CustomCategoryService customCategoryService) {
         this.appConfig = appConfig;
         this.accountService = accountService;
-        this.settingsService = settingsService;
-        this.categoryService = categoryService;
+        this.customCategoryService = customCategoryService;
     }
 
     public List<AiExtractionResponse> extractFullInvoiceData(MultipartFile file, User user)
@@ -69,8 +64,6 @@ public class AIService {
 
     public List<AiExtractionResponse> extractFullInvoiceData(MultipartFile file, User user, String userTaxId,
             String redactName, String redactTerms) throws JsonProcessingException {
-
-        ensureAiEnabled();
 
         logger.info("Starting invoice data extraction.");
 
@@ -94,7 +87,6 @@ public class AIService {
 
     public List<AiExtractionResponse> extractFullInvoiceData(byte[] contents, String filename, String contentType,
             User user, String userTaxId, String redactName, String redactTerms) throws JsonProcessingException {
-        ensureAiEnabled();
         if (Thread.currentThread().isInterrupted()) {
             throw new RuntimeException("Extraction canceled.");
         }
@@ -112,8 +104,6 @@ public class AIService {
                 .toList();
 
         String accountsJson = new ObjectMapper().writeValueAsString(accountNames);
-        List<String> categories = categoryService.listCategoryNames();
-        String categoriesJson = new ObjectMapper().writeValueAsString(categories);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
@@ -134,7 +124,6 @@ public class AIService {
         };
         body.add("file", new HttpEntity<>(resource, fileHeaders));
         body.add("accounts", accountsJson);
-        body.add("categories", categoriesJson);
         String resolvedUserName = (user != null && user.getName() != null) ? user.getName() : "";
         String resolvedUserTaxId = (userTaxId != null && !userTaxId.isBlank())
                 ? userTaxId
@@ -148,15 +137,33 @@ public class AIService {
             body.add("redact_terms", redactTerms);
         }
 
+        // Add custom categories
+        if (user != null) {
+            List<pt.rodrigimix.invodata.model.CustomCategory> customCategories =
+                customCategoryService.getUserCustomCategories(user.getUsername());
+            if (!customCategories.isEmpty()) {
+                try {
+                    String customCategoriesJson = new ObjectMapper().writeValueAsString(
+                        customCategories.stream()
+                            .map(cat -> java.util.Map.of("id", cat.getId(), "name", cat.getName()))
+                            .toList()
+                    );
+                    body.add("custom_categories", customCategoriesJson);
+                } catch (Exception e) {
+                    logger.warn("Failed to serialize custom categories: {}", e.getMessage());
+                }
+            }
+        }
+
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
         try {
             if (Thread.currentThread().isInterrupted()) {
                 throw new RuntimeException("Extraction canceled.");
             }
-                logger.debug("Calling Python API at: {}/api/extract-invoice", appConfig.getPythonApi());
+            logger.debug("Calling Python API at: {}/extract-invoice", appConfig.getPythonApi());
             AiExtractionResponse[] responses = restTemplate.postForObject(
-                    appConfig.getPythonApi() + "/api/extract-invoice",
+                    appConfig.getPythonApi() + "/extract-invoice",
                     requestEntity,
                     AiExtractionResponse[].class);
             if (Thread.currentThread().isInterrupted()) {
@@ -180,7 +187,6 @@ public class AIService {
             String redactName,
             String redactTerms,
             String redactBoxes) {
-        ensureAiEnabled();
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
@@ -217,9 +223,9 @@ public class AIService {
 
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
         try {
-                logger.debug("Calling Python API at: {}/api/redact-file", appConfig.getPythonApi());
+            logger.debug("Calling Python API at: {}/redact-file", appConfig.getPythonApi());
             ResponseEntity<byte[]> response = restTemplate.postForEntity(
-                    appConfig.getPythonApi() + "/api/redact-file",
+                    appConfig.getPythonApi() + "/redact-file",
                     requestEntity,
                     byte[].class);
             return response.getBody();
@@ -233,7 +239,7 @@ public class AIService {
     }
 
     public String categorizeIssuer(String issuerName, String designation, List<Item> items) {
-        if (settingsService.isAiEnabled()) {
+        if (appConfig.getAiEnabled()) {
             logger.info("Categorizing issuer.");
 
             HttpHeaders headers = new HttpHeaders();
@@ -258,21 +264,13 @@ public class AIService {
                     logger.debug("Failed to serialize items for categorization: {}", e.getMessage());
                 }
             }
-            try {
-                List<String> categories = categoryService.listCategoryNames();
-                if (!categories.isEmpty()) {
-                    body.add("categories", new ObjectMapper().writeValueAsString(categories));
-                }
-            } catch (Exception e) {
-                logger.debug("Failed to serialize categories for categorization: {}", e.getMessage());
-            }
 
             HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
 
             try {
-                logger.info("Calling Python API at: {}/api/categorize-issuer", appConfig.getPythonApi());
+                logger.info("Calling Python API at: {}/categorize-issuer", appConfig.getPythonApi());
                 CategoryResponse response = restTemplate.postForObject(
-                    appConfig.getPythonApi() + "/api/categorize-issuer",
+                        appConfig.getPythonApi() + "/categorize-issuer",
                         requestEntity,
                         CategoryResponse.class);
                 String category = (response != null) ? response.category() : "SERVICES";
@@ -286,14 +284,6 @@ public class AIService {
         } else {
             logger.warn("AI categorization is disabled. Skipping categorization.");
             return null;
-        }
-    }
-
-    private void ensureAiEnabled() {
-        if (!settingsService.isAiEnabled()) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.BAD_REQUEST,
-                    "AI_DISABLED");
         }
     }
 

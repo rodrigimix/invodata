@@ -2,9 +2,6 @@ package pt.rodrigimix.invodata.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import pt.rodrigimix.invodata.security.encryption.EncryptedBigDecimalConverter;
-import pt.rodrigimix.invodata.security.encryption.EncryptedLocalDateConverter;
-import pt.rodrigimix.invodata.security.encryption.EncryptedStringConverter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -21,20 +18,15 @@ public class Goal {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    @Convert(converter = EncryptedStringConverter.class)
+    @Column(nullable = false)
     private String name;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    @Convert(converter = EncryptedBigDecimalConverter.class)
+    @Column(nullable = false)
     private BigDecimal targetAmount;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    @Convert(converter = EncryptedBigDecimalConverter.class)
+    @Column(nullable = false)
     private BigDecimal currentAmount;
 
-    @Convert(converter = EncryptedLocalDateConverter.class)
-    @Column(columnDefinition = "TEXT")
     private LocalDate deadline;
 
     @ManyToOne
@@ -46,6 +38,5 @@ public class Goal {
     private Account linkedAccount;
 
     @Builder.Default
-    @Column(nullable = false)
     private Boolean completed = false;
 }

@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Plus,
-  Landmark,
-  Car,
-  Home,
+import { 
+  Plus, 
+  Landmark, 
+  Car, 
+  Home, 
   Plane,
   ArrowRight,
   TrendingUp,
@@ -69,11 +68,6 @@ import {
 
 const Goals = () => {
   const { t, i18n } = useTranslation();
-  const isPt = i18n.language?.toLowerCase().startsWith("pt");
-  const surveyUrl = isPt
-    ? "https://forms.gle/J8a4V2sUE8jn43pE6"
-    : "https://forms.gle/SEjfKLthcsonTbCEA";
-  const surveyLabel = isPt ? "Responder ao inquérito" : "Take the survey";
   const [activeTab, setActiveTab] = useState<"active" | "completed" | "categories">("active");
   const [timeRange, setTimeRange] = useState<"12m" | "5y">("12m");
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -94,7 +88,6 @@ const Goals = () => {
     deadline: "",
     linkedAccountId: "none",
   });
-  const [deadlineInput, setDeadlineInput] = useState("");
   const [fundsAmount, setFundsAmount] = useState("");
   const locale = i18n.language === "pt" ? "pt-PT" : "en-US";
 
@@ -111,26 +104,6 @@ const Goals = () => {
     if (Number.isNaN(parsed.getTime())) return undefined;
     return parsed;
   };
-
-  const parseDisplayDateToIso = (value: string) => {
-    const trimmed = value.trim();
-    const fullMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (!fullMatch) return "";
-    const parsed = parse(trimmed, "dd/MM/yyyy", new Date());
-    if (Number.isNaN(parsed.getTime())) return "";
-    return format(parsed, "yyyy-MM-dd");
-  };
-
-  const formatDateInput = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 8);
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-  };
-
-  useEffect(() => {
-    setDeadlineInput(form.deadline ? formatDateDisplay(form.deadline) : "");
-  }, [form.deadline]);
 
   const iconPalette = [Landmark, Car, Home, Plane];
 
@@ -217,21 +190,21 @@ const Goals = () => {
     const points =
       timeRange === "5y"
         ? [
-          t("goals.projection.years.y1"),
-          t("goals.projection.years.y2"),
-          t("goals.projection.years.y3"),
-          t("goals.projection.years.y4"),
-          t("goals.projection.years.y5"),
-        ]
+            t("goals.projection.years.y1"),
+            t("goals.projection.years.y2"),
+            t("goals.projection.years.y3"),
+            t("goals.projection.years.y4"),
+            t("goals.projection.years.y5"),
+          ]
         : [
-          t("goals.projection.months.sep"),
-          t("goals.projection.months.nov"),
-          t("goals.projection.months.jan"),
-          t("goals.projection.months.mar"),
-          t("goals.projection.months.may"),
-          t("goals.projection.months.jul"),
-          t("goals.projection.months.aug"),
-        ];
+            t("goals.projection.months.sep"),
+            t("goals.projection.months.nov"),
+            t("goals.projection.months.jan"),
+            t("goals.projection.months.mar"),
+            t("goals.projection.months.may"),
+            t("goals.projection.months.jul"),
+            t("goals.projection.months.aug"),
+          ];
     const steps = Math.max(points.length - 1, 1);
     return points.map((label, index) => {
       const ratio = index / steps;
@@ -364,12 +337,12 @@ const Goals = () => {
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
-        <div className="space-y-1">
+      <div className="flex items-center justify-between mb-8">
+        <div>
           <h1 className="text-3xl font-bold text-foreground">{t("goals.title")}</h1>
           <p className="text-muted-foreground mt-1">{t("goals.subtitle")}</p>
         </div>
-        <Button className="gap-2 w-full md:w-auto" onClick={handleOpenCreate}>
+        <Button className="gap-2" onClick={handleOpenCreate}>
           <Plus className="w-4 h-4" />
           {t("goals.create")}
         </Button>
@@ -377,7 +350,7 @@ const Goals = () => {
 
       {/* Projection Chart */}
       <div className="invodata-card p-6 mb-8">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between mb-6">
+        <div className="flex items-start justify-between mb-6">
           <div>
             <p className="text-sm text-muted-foreground mb-1">{t("goals.projection.title")}</p>
             <div className="flex items-baseline gap-3">
@@ -394,21 +367,21 @@ const Goals = () => {
               </span>
             </div>
           </div>
-
-          <div className="flex items-center bg-muted rounded-lg p-1 w-full md:w-auto">
-            <button
+          
+          <div className="flex items-center bg-muted rounded-lg p-1">
+            <button 
               onClick={() => setTimeRange("12m")}
               className={cn(
-                "flex-1 md:flex-none px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                "px-4 py-2 rounded-md text-sm font-medium transition-colors",
                 timeRange === "12m" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
               )}
             >
               {t("goals.projection.range12")}
             </button>
-            <button
+            <button 
               onClick={() => setTimeRange("5y")}
               className={cn(
-                "flex-1 md:flex-none px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                "px-4 py-2 rounded-md text-sm font-medium transition-colors",
                 timeRange === "5y" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
               )}
             >
@@ -416,32 +389,32 @@ const Goals = () => {
             </button>
           </div>
         </div>
-
+        
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={projectionData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorProjection" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(221, 83%, 53%)" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="hsl(221, 83%, 53%)" stopOpacity={0} />
+                  <stop offset="5%" stopColor="hsl(221, 83%, 53%)" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="hsl(221, 83%, 53%)" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <XAxis
-                dataKey="month"
-                axisLine={false}
+              <XAxis 
+                dataKey="month" 
+                axisLine={false} 
                 tickLine={false}
                 tick={{ fill: 'hsl(215, 16%, 47%)', fontSize: 12 }}
               />
-              <YAxis
-                axisLine={false}
+              <YAxis 
+                axisLine={false} 
                 tickLine={false}
                 tick={{ fill: 'hsl(215, 16%, 47%)', fontSize: 12 }}
                 tickFormatter={(value) =>
                   `€${(value / 1000).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}k`
                 }
               />
-              <Tooltip
-                contentStyle={{
+              <Tooltip 
+                contentStyle={{ 
                   backgroundColor: 'hsl(0, 0%, 100%)',
                   border: '1px solid hsl(214, 32%, 91%)',
                   borderRadius: '8px'
@@ -451,13 +424,13 @@ const Goals = () => {
                   t("goals.projection.tooltipLabel"),
                 ]}
               />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke="hsl(221, 83%, 53%)"
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                stroke="hsl(221, 83%, 53%)" 
                 strokeWidth={2}
-                fillOpacity={1}
-                fill="url(#colorProjection)"
+                fillOpacity={1} 
+                fill="url(#colorProjection)" 
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -465,7 +438,7 @@ const Goals = () => {
       </div>
 
       {/* Goals Section */}
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-foreground">{t("goals.sectionTitle")}</h2>
         <button className="flex items-center gap-1 text-primary font-medium hover:underline text-sm">
           {t("goals.viewAll")} <ArrowRight className="w-4 h-4" />
@@ -473,35 +446,35 @@ const Goals = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap items-center gap-4 mb-6 border-b border-border">
-        <button
+      <div className="flex items-center gap-6 mb-6 border-b border-border">
+        <button 
           onClick={() => setActiveTab("active")}
           className={cn(
             "pb-3 text-sm font-medium border-b-2 transition-colors",
-            activeTab === "active"
-              ? "border-primary text-foreground"
+            activeTab === "active" 
+              ? "border-primary text-foreground" 
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
           {t("goals.tabs.active", { count: activeCount })}
         </button>
-        <button
+        <button 
           onClick={() => setActiveTab("completed")}
           className={cn(
             "pb-3 text-sm font-medium border-b-2 transition-colors",
-            activeTab === "completed"
-              ? "border-primary text-foreground"
+            activeTab === "completed" 
+              ? "border-primary text-foreground" 
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
           {t("goals.tabs.completed")}
         </button>
-        <button
+        <button 
           onClick={() => setActiveTab("categories")}
           className={cn(
             "pb-3 text-sm font-medium border-b-2 transition-colors",
-            activeTab === "categories"
-              ? "border-primary text-foreground"
+            activeTab === "categories" 
+              ? "border-primary text-foreground" 
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
@@ -522,22 +495,22 @@ const Goals = () => {
       )}
 
       {/* Goals Grid */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-3 gap-6">
         {!isLoading && filteredGoals.map((goal, index) => {
           const percentage = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
           const Icon = getGoalIcon(goal, index);
           const categoryLabel = goal.linkedAccount?.name || t("goals.categoryDefault");
           const monthsRemaining = goal.deadline
             ? Math.max(
-              1,
-              Math.ceil(
-                (new Date(goal.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24 * 30),
-              ),
-            )
+                1,
+                Math.ceil(
+                  (new Date(goal.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24 * 30),
+                ),
+              )
             : null;
           const remaining = Math.max(goal.targetAmount - goal.currentAmount, 0);
           const suggestedMonthly = monthsRemaining ? remaining / monthsRemaining : null;
-
+          
           return (
             <div key={goal.id} className="invodata-card-hover p-6">
               <div className="flex items-start justify-between mb-4">
@@ -572,7 +545,7 @@ const Goals = () => {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-
+              
               <h3 className="font-semibold text-foreground mb-1">{goal.name}</h3>
               <p className="text-sm text-muted-foreground mb-2">
                 {t("goals.deadline", { deadline: formatDate(goal.deadline) })}
@@ -580,7 +553,7 @@ const Goals = () => {
               <p className="text-xs text-muted-foreground mb-4">
                 {categoryLabel}
               </p>
-
+              
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-foreground">
                   {t("goals.amountProgress", {
@@ -595,9 +568,9 @@ const Goals = () => {
                   {percentage.toFixed(0)}%
                 </span>
               </div>
-
+              
               <div className="h-2 bg-muted rounded-full overflow-hidden mb-4">
-                <div
+                <div 
                   className={cn(
                     "h-full rounded-full transition-all duration-500",
                     percentage >= 80 ? "bg-success" : "bg-primary"
@@ -605,8 +578,8 @@ const Goals = () => {
                   style={{ width: `${Math.min(percentage, 100)}%` }}
                 />
               </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              
+              <div className="flex items-center justify-between">
                 {suggestedMonthly !== null ? (
                   <span className="text-xs text-muted-foreground">
                     {t("goals.suggestedMonthly", {
@@ -619,11 +592,11 @@ const Goals = () => {
                 ) : (
                   <span className="text-xs text-muted-foreground">{t("goals.noSuggestion")}</span>
                 )}
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 w-full sm:w-auto"
+                    className="h-8"
                     onClick={() => {
                       setFundsAmount("");
                       setFundGoalTarget(goal);
@@ -662,23 +635,14 @@ const Goals = () => {
       </div>
 
       {/* Footer */}
-      <footer className="mt-12 pt-6 border-t border-border">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <p className="text-sm text-muted-foreground">
-            {t("goals.footer")}
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-            <Link to="/terms" className="hover:text-foreground">
-              {t("goals.footerLinks.terms")}
-            </Link>
-            <Link to="/privacy" className="hover:text-foreground">
-              {t("goals.footerLinks.privacy")}
-            </Link>
-            <a href="#" className="hover:text-foreground">{t("goals.footerLinks.help")}</a>
-            <a href={surveyUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
-              {surveyLabel}
-            </a>
-          </div>
+      <footer className="mt-12 pt-6 border-t border-border flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {t("goals.footer")}
+        </p>
+        <div className="flex items-center gap-6">
+          <a href="#" className="text-sm text-muted-foreground hover:text-foreground">{t("goals.footerLinks.terms")}</a>
+          <a href="#" className="text-sm text-muted-foreground hover:text-foreground">{t("goals.footerLinks.privacy")}</a>
+          <a href="#" className="text-sm text-muted-foreground hover:text-foreground">{t("goals.footerLinks.help")}</a>
         </div>
       </footer>
 
@@ -719,49 +683,28 @@ const Goals = () => {
             </div>
             <div>
               <Label htmlFor="goal-deadline">{t("goals.form.deadline")}</Label>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Input
-                  id="goal-deadline"
-                  placeholder={t("goals.form.deadlinePlaceholder")}
-                  value={deadlineInput}
-                  onChange={(event) => {
-                    const value = formatDateInput(event.target.value);
-                    setDeadlineInput(value);
-                    const iso = parseDisplayDateToIso(value);
-                    if (iso) {
-                      setForm((prev) => ({ ...prev, deadline: iso }));
-                    } else if (!value.trim()) {
-                      setForm((prev) => ({ ...prev, deadline: "" }));
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="goal-deadline"
+                    variant="outline"
+                    className={cn("w-full justify-start text-left font-normal", !form.deadline && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {form.deadline ? formatDateDisplay(form.deadline) : t("goals.form.deadlinePlaceholder")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={parseIsoDate(form.deadline)}
+                    onSelect={(date) =>
+                      setForm((prev) => ({ ...prev, deadline: date ? format(date, "yyyy-MM-dd") : "" }))
                     }
-                  }}
-                  onBlur={() => {
-                    setDeadlineInput(form.deadline ? formatDateDisplay(form.deadline) : "");
-                  }}
-                />
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      aria-label={t("goals.form.deadline")}
-                      className="w-full sm:w-auto"
-                    >
-                      <CalendarIcon className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={parseIsoDate(form.deadline)}
-                      onSelect={(date) =>
-                        setForm((prev) => ({ ...prev, deadline: date ? format(date, "yyyy-MM-dd") : "" }))
-                      }
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Label htmlFor="goal-account">{t("goals.form.linkedAccount")}</Label>
@@ -827,49 +770,28 @@ const Goals = () => {
             </div>
             <div>
               <Label htmlFor="goal-edit-deadline">{t("goals.form.deadline")}</Label>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Input
-                  id="goal-edit-deadline"
-                  placeholder={t("goals.form.deadlinePlaceholder")}
-                  value={deadlineInput}
-                  onChange={(event) => {
-                    const value = formatDateInput(event.target.value);
-                    setDeadlineInput(value);
-                    const iso = parseDisplayDateToIso(value);
-                    if (iso) {
-                      setForm((prev) => ({ ...prev, deadline: iso }));
-                    } else if (!value.trim()) {
-                      setForm((prev) => ({ ...prev, deadline: "" }));
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="goal-edit-deadline"
+                    variant="outline"
+                    className={cn("w-full justify-start text-left font-normal", !form.deadline && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {form.deadline ? formatDateDisplay(form.deadline) : t("goals.form.deadlinePlaceholder")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={parseIsoDate(form.deadline)}
+                    onSelect={(date) =>
+                      setForm((prev) => ({ ...prev, deadline: date ? format(date, "yyyy-MM-dd") : "" }))
                     }
-                  }}
-                  onBlur={() => {
-                    setDeadlineInput(form.deadline ? formatDateDisplay(form.deadline) : "");
-                  }}
-                />
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      aria-label={t("goals.form.deadline")}
-                      className="w-full sm:w-auto"
-                    >
-                      <CalendarIcon className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={parseIsoDate(form.deadline)}
-                      onSelect={(date) =>
-                        setForm((prev) => ({ ...prev, deadline: date ? format(date, "yyyy-MM-dd") : "" }))
-                      }
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Label htmlFor="goal-edit-account">{t("goals.form.linkedAccount")}</Label>

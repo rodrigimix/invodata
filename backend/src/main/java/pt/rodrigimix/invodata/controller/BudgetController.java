@@ -8,9 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import pt.rodrigimix.invodata.dto.BudgetUpdateRequest;
 import pt.rodrigimix.invodata.dto.BudgetStatusDTO;
 import pt.rodrigimix.invodata.model.Budget;
-import pt.rodrigimix.invodata.model.User;
 import pt.rodrigimix.invodata.service.budget.BudgetService;
-import pt.rodrigimix.invodata.service.user.UserService;
 
 import java.security.Principal;
 
@@ -22,40 +20,34 @@ public class BudgetController {
     private static final Logger logger = LoggerFactory.getLogger(BudgetController.class);
 
     private final BudgetService budgetService;
-    private final UserService userService;
 
     @Autowired
-    public BudgetController(BudgetService budgetService, UserService userService) {
+    public BudgetController(BudgetService budgetService) {
         this.budgetService = budgetService;
-        this.userService = userService;
     }
 
     @PostMapping
-    public ResponseEntity<Budget> createBudget(@RequestBody Budget budget, Principal principal) {
+    public ResponseEntity<Budget> createBudget(@RequestBody Budget budget) {
         logger.debug("Received request to create budget for category: {}, month: {}, year: {}",
                 budget.getCategory(), budget.getMonth(), budget.getYear());
-        User user = userService.getUserFromUsername(principal.getName());
-        Budget savedBudget = budgetService.saveBudget(budget, user);
+        Budget savedBudget = budgetService.saveBudget(budget);
         logger.info("Successfully created/updated budget with ID: {}", savedBudget.getId());
         return ResponseEntity.ok(savedBudget);
     }
 
     @GetMapping
-    public ResponseEntity<java.util.List<Budget>> getBudgets(Principal principal) {
-        User user = userService.getUserFromUsername(principal.getName());
-        return ResponseEntity.ok(budgetService.getAllBudgets(user));
+    public ResponseEntity<java.util.List<Budget>> getBudgets() {
+        return ResponseEntity.ok(budgetService.getAllBudgets());
     }
 
     @PutMapping
     public ResponseEntity<Budget> updateBudget(@RequestParam String category,
-            @RequestParam int month,
-            @RequestParam int year,
-            @RequestBody BudgetUpdateRequest request,
-            Principal principal) {
+                                               @RequestParam int month,
+                                               @RequestParam int year,
+                                               @RequestBody BudgetUpdateRequest request) {
         logger.debug("Received request to update budget for category: {}, month: {}, year: {}",
                 category, month, year);
-        User user = userService.getUserFromUsername(principal.getName());
-        Budget updated = budgetService.updateBudget(category, month, year, request, user);
+        Budget updated = budgetService.updateBudget(category, month, year, request);
         logger.info("Successfully updated budget for category: {}, month: {}, year: {}",
                 updated.getCategory(), updated.getMonth(), updated.getYear());
         return ResponseEntity.ok(updated);
@@ -63,25 +55,21 @@ public class BudgetController {
 
     @DeleteMapping
     public ResponseEntity<Void> deleteBudget(@RequestParam String category,
-            @RequestParam int month,
-            @RequestParam int year,
-            Principal principal) {
+                                             @RequestParam int month,
+                                             @RequestParam int year) {
         logger.debug("Received request to delete budget for category: {}, month: {}, year: {}",
                 category, month, year);
-        User user = userService.getUserFromUsername(principal.getName());
-        budgetService.deleteBudget(category, month, year, user);
+        budgetService.deleteBudget(category, month, year);
         logger.info("Successfully deleted budget for category: {}, month: {}, year: {}",
                 category, month, year);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/status")
-    public ResponseEntity<BudgetStatusDTO> calculateStatus(@RequestParam String category, @RequestParam int month,
-            @RequestParam int year, Principal principal) {
+    public ResponseEntity<BudgetStatusDTO> calculateStatus(@RequestParam String category, @RequestParam int month, @RequestParam int year, Principal principal) {
         logger.debug("Received request to calculate budget status for category: {}, month: {}, year: {}",
                 category, month, year);
-        User user = userService.getUserFromUsername(principal.getName());
-        BudgetStatusDTO status = budgetService.calculateStatus(category, month, year, user);
+        BudgetStatusDTO status = budgetService.calculateStatus(category, month, year, principal.getName());
         logger.info("Successfully calculated budget status for category: {}", category);
         return ResponseEntity.ok(status);
     }

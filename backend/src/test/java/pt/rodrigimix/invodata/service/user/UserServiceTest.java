@@ -10,7 +10,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import pt.rodrigimix.invodata.config.AppConfig;
 import pt.rodrigimix.invodata.dto.LoginRequest;
-import pt.rodrigimix.invodata.dto.LoginResult;
 import pt.rodrigimix.invodata.dto.RegisterRequest;
 import pt.rodrigimix.invodata.model.User;
 import pt.rodrigimix.invodata.repository.UserRepository;
@@ -35,14 +34,28 @@ class UserServiceTest {
     @Mock
     private AppConfig appConfig;
 
-    @Mock
-    private MfaService mfaService;
-
     @InjectMocks
     private UserService userService;
 
     @Captor
     private ArgumentCaptor<User> userCaptor;
+
+    @Test
+    void registerRejectsInvalidAdminKey() {
+        RegisterRequest request = new RegisterRequest(
+                "alice",
+                "pass",
+                "alice@example.com",
+                "Alice",
+                "123456789",
+                "wrong",
+                false);
+        when(appConfig.getRegistrationKey()).thenReturn("correct");
+
+        assertThatThrownBy(() -> userService.register(request))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Invalid Admin Key! Access denied.");
+    }
 
     @Test
     void registerRejectsDuplicateUsername() {
@@ -52,8 +65,9 @@ class UserServiceTest {
                 "alice@example.com",
                 "Alice",
                 "123456789",
-                false,
-                true);
+                "correct",
+                false);
+        when(appConfig.getRegistrationKey()).thenReturn("correct");
         when(userRepository.existsByUsernameIgnoreCase("alice")).thenReturn(true);
 
         assertThatThrownBy(() -> userService.register(request))
@@ -69,8 +83,9 @@ class UserServiceTest {
                 "alice@example.com",
                 "Alice",
                 "123456789",
-                false,
-                true);
+                "correct",
+                false);
+        when(appConfig.getRegistrationKey()).thenReturn("correct");
         when(userRepository.existsByUsernameIgnoreCase("alice")).thenReturn(false);
         when(passwordEncoder.encode("pass")).thenReturn("encoded-pass");
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
@@ -90,7 +105,7 @@ class UserServiceTest {
 
     @Test
     void loginRejectsUnknownUser() {
-        LoginRequest request = new LoginRequest("missing", "pass", null, null, null);
+        LoginRequest request = new LoginRequest("missing", "pass");
         when(userRepository.findByUsernameIgnoreCase("missing")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> userService.login(request))
@@ -101,7 +116,7 @@ class UserServiceTest {
     @Test
     void loginRejectsInvalidPassword() {
         User user = User.builder().username("alice").password("encoded").build();
-        LoginRequest request = new LoginRequest("alice", "bad-pass", null, null, null);
+        LoginRequest request = new LoginRequest("alice", "bad-pass");
         when(userRepository.findByUsernameIgnoreCase("alice")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("bad-pass", "encoded")).thenReturn(false);
 
@@ -113,14 +128,14 @@ class UserServiceTest {
     @Test
     void loginReturnsJwtTokenForValidCredentials() {
         User user = User.builder().id(5L).username("alice").password("encoded").build();
-        LoginRequest request = new LoginRequest("alice", "pass", null, null, null);
+        LoginRequest request = new LoginRequest("alice", "pass");
         when(userRepository.findByUsernameIgnoreCase("alice")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("pass", "encoded")).thenReturn(true);
         when(appConfig.getJwtSecret()).thenReturn("01234567890123456789012345678901");
         when(appConfig.getJwtExpiration()).thenReturn(1000L);
 
-        LoginResult login = userService.login(request);
+        String token = userService.login(request);
 
-        assertThat(login.token()).isNotBlank();
+        assertThat(token).isNotBlank();
     }
 }

@@ -14,7 +14,6 @@ const UploadJobPopup = () => {
   const [dismissedBatchId, setDismissedBatchId] = useState<string | null>(null);
   const hasActiveUploads = entries.some((entry) => entry.status === "uploading");
   const hasStarted = entries.some((entry) => entry.status !== "idle");
-  const isAuthRoute = location.pathname === "/login" || location.pathname === "/register";
 
   useEffect(() => {
     setDismissedBatchId(null);
@@ -53,7 +52,7 @@ const UploadJobPopup = () => {
     location.pathname !== "/invoices/new/upload" &&
     dismissedBatchId !== batchId;
 
-  if (!shouldShow || isAuthRoute) return null;
+  if (!shouldShow) return null;
 
   const statusLabel = allDone
     ? t("invoiceUpload.status.success")

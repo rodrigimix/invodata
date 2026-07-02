@@ -6,7 +6,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
 import Invoices from "./pages/Invoices";
 import InvoiceDetail from "./pages/InvoiceDetail";
@@ -18,11 +17,6 @@ import InvoiceUpload from "./pages/InvoiceUpload";
 import NotFound from "./pages/NotFound";
 import Chat from "./pages/Chat";
 import Accounts from "./pages/Accounts";
-import Privacy from "./pages/Privacy";
-import Terms from "./pages/Terms";
-import EncryptionMigration from "./pages/EncryptionMigration";
-import Setup from "./pages/Setup";
-import SharedInvoice from "./pages/SharedInvoice";
 import RequireAuth from "./components/auth/RequireAuth";
 import { UploadJobProvider } from "@/context/UploadJobContext";
 import UploadJobPopup from "@/components/uploads/UploadJobPopup";
@@ -39,21 +33,8 @@ const App = () => (
           <UploadJobPopup />
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/setup" element={<Setup />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/shared/token/:token" element={<SharedInvoice />} />
-            <Route path="/privacy" element={<Privacy />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route
-              path="/migrate-encryption"
-              element={
-                <RequireAuth>
-                  <EncryptionMigration />
-                </RequireAuth>
-              }
-            />
             <Route
               path="/dashboard"
               element={

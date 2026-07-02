@@ -23,4 +23,4 @@ COPY main.py .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "gunicorn -w ${GUNICORN_WORKERS:-2} -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout ${GUNICORN_TIMEOUT:-300} main:app"]
+CMD ["sh", "-c", "gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 120 main:app"]

@@ -9,12 +9,9 @@ import { cn } from "@/lib/utils";
 import {
   clearAuth,
   deleteUserData,
-  disableMfa,
-  enableMfa,
   exportUserDataZip,
   getAuthToken,
   getUserProfile,
-  setupMfa,
   setAuth,
   setStoredLanguage,
   updateAiConsent,
@@ -39,16 +36,10 @@ import {
 } from "@/components/ui/dialog";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useNavigate } from "react-router-dom";
-import QRCode from "qrcode";
+import { useNavigate } from "react-router-dom";
 
 const Settings = () => {
   const { t, i18n } = useTranslation();
-  const isPt = i18n.language?.toLowerCase().startsWith("pt");
-  const surveyUrl = isPt
-    ? "https://forms.gle/J8a4V2sUE8jn43pE6"
-    : "https://forms.gle/SEjfKLthcsonTbCEA";
-  const surveyLabel = isPt ? "Responder ao inquérito" : "Take the survey";
   const { toast } = useToast();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("profile");
@@ -75,15 +66,6 @@ const Settings = () => {
   const [deletePassword, setDeletePassword] = useState("");
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [mfaSetupOpen, setMfaSetupOpen] = useState(false);
-  const [mfaDisableOpen, setMfaDisableOpen] = useState(false);
-  const [mfaSecret, setMfaSecret] = useState("");
-  const [mfaOtpAuthUrl, setMfaOtpAuthUrl] = useState("");
-  const [mfaQrCode, setMfaQrCode] = useState<string | null>(null);
-  const [mfaCode, setMfaCode] = useState("");
-  const [mfaDisablePassword, setMfaDisablePassword] = useState("");
-  const [mfaDisableCode, setMfaDisableCode] = useState("");
-  const [mfaLoading, setMfaLoading] = useState(false);
 
   const tabs = useMemo(
     () => [
@@ -103,7 +85,6 @@ const Settings = () => {
     { label: t("auth.passwordNumber"), met: /[0-9]/.test(newPassword) },
     { label: t("auth.passwordSpecial"), met: /[!@#$%^&*]/.test(newPassword) },
   ];
-
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -135,7 +116,6 @@ const Settings = () => {
       isMounted = false;
     };
   }, [i18n]);
-
 
   const handleLanguageChange = async (value: string) => {
     setLanguage(value);
@@ -249,87 +229,6 @@ const Settings = () => {
     }
   };
 
-  const handleMfaSetup = async () => {
-    setMfaLoading(true);
-    try {
-      const result = await setupMfa();
-      setMfaSecret(result.secret);
-      setMfaOtpAuthUrl(result.otpauthUrl);
-      try {
-        const qr = await QRCode.toDataURL(result.otpauthUrl);
-        setMfaQrCode(qr);
-      } catch {
-        setMfaQrCode(null);
-      }
-      setMfaSetupOpen(true);
-    } catch (err) {
-      toast({
-        title: t("settings.mfaSetupError"),
-        description: err instanceof Error ? err.message : t("settings.mfaSetupError"),
-        variant: "destructive",
-      });
-    } finally {
-      setMfaLoading(false);
-    }
-  };
-
-  const handleMfaEnable = async () => {
-    if (!mfaCode) {
-      toast({
-        title: t("settings.mfaCodeRequired"),
-        variant: "destructive",
-      });
-      return;
-    }
-    setMfaLoading(true);
-    try {
-      await enableMfa(mfaCode);
-      setProfile((prev) => (prev ? { ...prev, mfaEnabled: true } : prev));
-      setMfaSetupOpen(false);
-      setMfaCode("");
-      toast({
-        title: t("settings.mfaEnabled"),
-      });
-    } catch (err) {
-      toast({
-        title: t("settings.mfaEnableError"),
-        description: err instanceof Error ? err.message : t("settings.mfaEnableError"),
-        variant: "destructive",
-      });
-    } finally {
-      setMfaLoading(false);
-    }
-  };
-
-  const handleMfaDisable = async () => {
-    if (!mfaDisablePassword || !mfaDisableCode) {
-      toast({
-        title: t("settings.mfaDisableRequired"),
-        variant: "destructive",
-      });
-      return;
-    }
-    setMfaLoading(true);
-    try {
-      await disableMfa(mfaDisablePassword, mfaDisableCode);
-      setProfile((prev) => (prev ? { ...prev, mfaEnabled: false } : prev));
-      setMfaDisableOpen(false);
-      setMfaDisablePassword("");
-      setMfaDisableCode("");
-      toast({
-        title: t("settings.mfaDisabled"),
-      });
-    } catch (err) {
-      toast({
-        title: t("settings.mfaDisableError"),
-        description: err instanceof Error ? err.message : t("settings.mfaDisableError"),
-        variant: "destructive",
-      });
-    } finally {
-      setMfaLoading(false);
-    }
-  };
-
   const handleExportData = async () => {
     if (!exportPassword) {
       toast({
@@ -389,7 +288,6 @@ const Settings = () => {
     }
   };
 
-
   return (
     <DashboardLayout>
       {/* Breadcrumb */}
@@ -398,21 +296,21 @@ const Settings = () => {
       </div>
 
       <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">{t("settings.title")}</h1>
+        <h1 className="text-3xl font-bold text-foreground">{t("settings.title")}</h1>
         <p className="text-muted-foreground mt-1">{t("settings.subtitle")}</p>
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
+      <div className="flex gap-8">
         {/* Sidebar */}
-        <div className="w-full lg:w-56 lg:shrink-0">
-          <nav className="flex gap-2 overflow-x-auto pb-1 lg:pb-0 lg:flex-col lg:space-y-2 lg:gap-0">
+        <div className="w-56 shrink-0">
+          <nav className="space-y-2">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "whitespace-nowrap w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                  "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                   activeTab === tab.id
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -435,7 +333,7 @@ const Settings = () => {
                 <p className="text-muted-foreground text-sm mb-6">{t("settings.personalInfoDesc")}</p>
 
                 {/* Form Fields */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="fullName">{t("settings.fullName")}</Label>
                     <Input id="fullName" value={fullName} onChange={(event) => setFullName(event.target.value)} />
@@ -462,7 +360,6 @@ const Settings = () => {
                   </div>
                 </div>
               </div>
-
             </>
           )}
 
@@ -475,7 +372,7 @@ const Settings = () => {
 
                 <div className="mb-6">
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-4">{t("settings.changePassword")}</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label className="text-primary text-sm">{t("settings.currentPassword")}</Label>
                       <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
@@ -483,7 +380,7 @@ const Settings = () => {
                     <div className="space-y-2">
                       <Label className="text-primary text-sm">{t("settings.newPassword")}</Label>
                       <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mt-3">
+                      <div className="grid grid-cols-2 gap-1 mt-3">
                         {passwordRequirements.map((req) => (
                           <div key={req.label} className="flex items-center gap-1.5">
                             <div
@@ -506,7 +403,7 @@ const Settings = () => {
                   </div>
                   <Button
                     variant="outline"
-                    className="mt-4 text-primary border-primary hover:bg-primary hover:text-primary-foreground w-full sm:w-auto"
+                    className="mt-4 text-primary border-primary hover:bg-primary hover:text-primary-foreground"
                     onClick={handleUpdatePassword}
                     disabled={isUpdatingPassword}
                   >
@@ -515,35 +412,24 @@ const Settings = () => {
                 </div>
 
                 {/* Two-Factor */}
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 rounded-lg bg-muted/50">
+                <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="font-semibold text-foreground">{t("settings.twoFactorTitle")}</h4>
                       <span className="px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">{t("settings.recommended")}</span>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {profile?.mfaEnabled ? t("settings.mfaEnabledDesc") : t("settings.mfaDisabledDesc")}
+                      {t("settings.twoFactorComingSoon")}
                     </p>
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-                    <Switch checked={Boolean(profile?.mfaEnabled)} disabled />
-                    {profile?.mfaEnabled ? (
-                      <Button variant="outline" className="w-full sm:w-auto" onClick={() => setMfaDisableOpen(true)}>
-                        {t("settings.disableMfa")}
-                      </Button>
-                    ) : (
-                      <Button className="w-full sm:w-auto" onClick={handleMfaSetup} disabled={mfaLoading}>
-                        {mfaLoading ? t("settings.mfaLoading") : t("settings.enableMfa")}
-                      </Button>
-                    )}
-                  </div>
+                  <Switch checked={false} disabled />
                 </div>
               </div>
 
               {/* Data & Privacy */}
               <div className="invodata-card p-6">
                 <h2 className="text-xl font-bold text-foreground mb-1">{t("settings.dataTitle")}</h2>
-                <p className="text-muted-foreground text-sm mb-2">{t("settings.dataDesc")}</p>
+                <p className="text-muted-foreground text-sm mb-6">{t("settings.dataDesc")}</p>
 
                 <div className="space-y-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 rounded-lg bg-muted/50">
@@ -551,7 +437,7 @@ const Settings = () => {
                       <h4 className="font-semibold text-foreground">{t("settings.exportTitle")}</h4>
                       <p className="text-sm text-muted-foreground mt-1">{t("settings.exportDesc")}</p>
                     </div>
-                    <Button variant="outline" className="w-full sm:w-auto" onClick={() => setExportDialogOpen(true)}>
+                    <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
                       {t("settings.exportAction")}
                     </Button>
                   </div>
@@ -560,7 +446,7 @@ const Settings = () => {
                       <h4 className="font-semibold text-foreground">{t("settings.deleteTitle")}</h4>
                       <p className="text-sm text-muted-foreground mt-1">{t("settings.deleteDesc")}</p>
                     </div>
-                    <Button variant="destructive" className="w-full sm:w-auto" onClick={() => setDeleteDialogOpen(true)}>
+                    <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
                       {t("settings.deleteAction")}
                     </Button>
                   </div>
@@ -573,7 +459,7 @@ const Settings = () => {
             <div className="invodata-card p-6">
               <h2 className="text-xl font-bold text-foreground mb-1">{t("settings.aiConsentTitle")}</h2>
               <p className="text-muted-foreground text-sm mb-6">{t("settings.aiConsentDesc")}</p>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 rounded-lg bg-muted/50">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                 <div>
                   <h4 className="font-semibold text-foreground">{t("settings.aiConsentToggleTitle")}</h4>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -589,7 +475,7 @@ const Settings = () => {
             <div className="invodata-card p-6">
               <h2 className="text-xl font-bold text-foreground mb-1">{t("settings.appearanceTitle")}</h2>
               <p className="text-muted-foreground text-sm mb-6">{t("settings.appearanceDesc")}</p>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 rounded-lg bg-muted/50">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                 <div>
                   <h4 className="font-semibold text-foreground">{t("settings.themeTitle")}</h4>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -610,118 +496,17 @@ const Settings = () => {
 
           {/* Actions */}
           {activeTab !== "notifications" && activeTab !== "subscription" && activeTab !== "appearance" && (
-            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end pt-4 border-t border-border">
-              <Button variant="ghost" className="w-full sm:w-auto" onClick={handleDiscardChanges}>
+            <div className="flex items-center justify-end gap-4 pt-4 border-t border-border">
+              <Button variant="ghost" onClick={handleDiscardChanges}>
                 {t("settings.discardChanges")}
               </Button>
-              <Button className="w-full sm:w-auto" onClick={handleSaveChanges} disabled={isSaving}>
+              <Button onClick={handleSaveChanges} disabled={isSaving}>
                 {isSaving ? t("settings.savingChanges") : t("settings.saveChanges")}
               </Button>
             </div>
           )}
         </div>
       </div >
-
-      <Dialog open={mfaSetupOpen} onOpenChange={(open) => {
-        setMfaSetupOpen(open);
-        if (!open) {
-          setMfaCode("");
-          setMfaQrCode(null);
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("settings.mfaSetupTitle")}</DialogTitle>
-            <DialogDescription>{t("settings.mfaSetupDesc")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            {mfaQrCode && (
-              <div className="flex justify-center">
-                <img
-                  src={mfaQrCode}
-                  alt={t("settings.mfaQrAlt")}
-                  className="h-40 w-40 rounded-md border border-border bg-white p-2"
-                />
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label>{t("settings.mfaSecretLabel")}</Label>
-              <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-mono break-all">
-                {mfaSecret || "-"}
-              </div>
-            </div>
-            {mfaOtpAuthUrl && (
-              <p className="text-xs text-muted-foreground">
-                {t("settings.mfaOtpAuthHint")} <span className="font-mono break-all">{mfaOtpAuthUrl}</span>
-              </p>
-            )}
-            <div className="space-y-1">
-              <Label htmlFor="mfa-code">{t("settings.mfaCodeLabel")}</Label>
-              <Input
-                id="mfa-code"
-                type="text"
-                inputMode="numeric"
-                placeholder="123456"
-                value={mfaCode}
-                onChange={(event) => setMfaCode(event.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMfaSetupOpen(false)}>
-              {t("settings.cancel")}
-            </Button>
-            <Button onClick={handleMfaEnable} disabled={mfaLoading}>
-              {mfaLoading ? t("settings.mfaLoading") : t("settings.mfaEnableAction")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={mfaDisableOpen} onOpenChange={(open) => {
-        setMfaDisableOpen(open);
-        if (!open) {
-          setMfaDisablePassword("");
-          setMfaDisableCode("");
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("settings.mfaDisableTitle")}</DialogTitle>
-            <DialogDescription>{t("settings.mfaDisableDesc")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="mfa-disable-password">{t("settings.passwordLabel")}</Label>
-              <Input
-                id="mfa-disable-password"
-                type="password"
-                value={mfaDisablePassword}
-                onChange={(event) => setMfaDisablePassword(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="mfa-disable-code">{t("settings.mfaCodeLabel")}</Label>
-              <Input
-                id="mfa-disable-code"
-                type="text"
-                inputMode="numeric"
-                placeholder="123456"
-                value={mfaDisableCode}
-                onChange={(event) => setMfaDisableCode(event.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMfaDisableOpen(false)}>
-              {t("settings.cancel")}
-            </Button>
-            <Button variant="destructive" onClick={handleMfaDisable} disabled={mfaLoading}>
-              {mfaLoading ? t("settings.mfaLoading") : t("settings.mfaDisableAction")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={exportDialogOpen} onOpenChange={(open) => {
         setExportDialogOpen(open);
@@ -784,19 +569,8 @@ const Settings = () => {
       {/* Footer */}
       <footer className="mt-12 pt-6 border-t border-border text-center">
         <p className="text-sm text-muted-foreground">
-          {t("app.footer")}
+          {t("settings.footer")}
         </p>
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-          <Link to="/terms" className="hover:text-foreground">
-            {t("auth.termsLink")}
-          </Link>
-          <Link to="/privacy" className="hover:text-foreground">
-            {t("auth.privacyPolicy")}
-          </Link>
-          <a href={surveyUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
-            {surveyLabel}
-          </a>
-        </div>
       </footer>
     </DashboardLayout >
   );

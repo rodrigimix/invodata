@@ -9,8 +9,7 @@ public record ChatSessionAiRequest(
         UserRef user,
         List<Message> messages,
         String summary,
-        @JsonProperty("finance_snapshot") FinanceSnapshot financeSnapshot,
-        @JsonProperty("current_date") String currentDate) {
+        @JsonProperty("finance_snapshot") FinanceSnapshot financeSnapshot) {
     public record UserRef(String id, String username, String language) {
     }
 

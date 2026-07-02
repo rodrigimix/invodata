@@ -6,9 +6,6 @@ RUN mvn -Dmaven.test.skip=true package
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-RUN apt-get update && apt-get install -y openssl docker.io docker-compose \
-	&& rm -rf /var/lib/apt/lists/*
 COPY --from=build /workspace/target/*.jar /app/app.jar
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 EXPOSE 8080
-ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -16,10 +16,6 @@ import pt.rodrigimix.invodata.dto.FinanceSnapshot;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.YearMonth;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -52,130 +48,37 @@ public class FinanceService {
                         "HOUSING");
 
         public String getSpendingSummary(int month, int year, String username) {
-                List<Invoice> invoices = getInvoicesForUser(username);
-                Map<String, Double> totals = invoices.stream()
-                                .filter(inv -> inv.getDate() != null
-                                                && inv.getDate().getMonthValue() == month
-                                                && inv.getDate().getYear() == year)
-                                .filter(inv -> inv.getCategory() != null)
-                                .collect(Collectors.groupingBy(Invoice::getCategory,
-                                                Collectors.summingDouble(inv -> inv.getTotalAmount() != null
-                                                                ? inv.getTotalAmount()
-                                                                : 0.0)));
+                List<Object[]> report = invoiceRepository.getSpendingReportIgnoreCase(month, year, username);
                 StringBuilder sb = new StringBuilder("User spending for " + month + "/" + year + ":\n");
-                totals.forEach((cat, amount) -> sb.append("- ").append(cat).append(": ")
-                                .append(amount).append(" EUR\n"));
+                for (Object[] row : report) {
+                        sb.append("- ").append(row[0]).append(": ").append(row[1]).append(" EUR\n");
+                }
                 return sb.toString();
         }
 
         public List<Map<String, Object>> getCategoryChartData(int month, int year, String username) {
-                List<Invoice> invoices = getInvoicesForUser(username);
-                Map<String, Double> totals = invoices.stream()
-                                .filter(inv -> inv.getDate() != null
-                                                && inv.getDate().getMonthValue() == month
-                                                && inv.getDate().getYear() == year)
-                                .filter(inv -> !inv.isRevenue())
-                                .filter(inv -> inv.getCategory() != null)
-                                .collect(Collectors.groupingBy(Invoice::getCategory,
-                                                Collectors.summingDouble(inv -> inv.getTotalAmount() != null
-                                                                ? inv.getTotalAmount()
-                                                                : 0.0)));
-                return totals.entrySet().stream()
-                                .map(entry -> Map.<String, Object>of(
-                                                "name", entry.getKey(),
-                                                "value", entry.getValue()))
-                                .collect(Collectors.toList());
+                return invoiceRepository.getCategorySpendingIgnoreCase(month, year, username);
         }
 
         public List<Map<String, Object>> getCategoryChartDataForYear(int year, String username) {
-                List<Invoice> invoices = getInvoicesForUser(username);
-                Map<String, Double> totals = invoices.stream()
-                                .filter(inv -> inv.getDate() != null && inv.getDate().getYear() == year)
-                                .filter(inv -> !inv.isRevenue())
-                                .filter(inv -> inv.getCategory() != null)
-                                .collect(Collectors.groupingBy(Invoice::getCategory,
-                                                Collectors.summingDouble(inv -> inv.getTotalAmount() != null
-                                                                ? inv.getTotalAmount()
-                                                                : 0.0)));
-                return totals.entrySet().stream()
-                                .map(entry -> Map.<String, Object>of(
-                                                "name", entry.getKey(),
-                                                "value", entry.getValue()))
-                                .collect(Collectors.toList());
+                return invoiceRepository.getCategorySpendingByYearIgnoreCase(year, username);
         }
 
         public List<Map<String, Object>> getEvolutionChartData(String username) {
-                List<Invoice> invoices = getInvoicesForUser(username);
-                YearMonth current = YearMonth.now();
-                Map<String, Double> totals = new LinkedHashMap<>();
-                for (int i = 5; i >= 0; i--) {
-                        YearMonth month = current.minusMonths(i);
-                        totals.put(month.toString(), 0.0);
-                }
-                invoices.stream()
-                                .filter(inv -> inv.getDate() != null)
-                                .forEach(inv -> {
-                                        String key = YearMonth.from(inv.getDate()).toString();
-                                        if (totals.containsKey(key)) {
-                                                double value = inv.getTotalAmount() != null ? inv.getTotalAmount()
-                                                                : 0.0;
-                                                totals.put(key, totals.get(key) + value);
-                                        }
-                                });
-                return totals.entrySet().stream()
-                                .map(entry -> Map.<String, Object>of(
-                                                "month", entry.getKey(),
-                                                "total", entry.getValue()))
-                                .collect(Collectors.toList());
+                return invoiceRepository.getMonthlyEvolutionIgnoreCase(username);
         }
 
         public List<Map<String, Object>> getEvolutionChartDetailedData(String username) {
-                List<Invoice> invoices = getInvoicesForUser(username);
-                YearMonth current = YearMonth.now();
-                Map<String, double[]> totals = new LinkedHashMap<>();
-                for (int i = 5; i >= 0; i--) {
-                        YearMonth month = current.minusMonths(i);
-                        totals.put(month.toString(), new double[] { 0.0, 0.0 });
-                }
-                invoices.stream()
-                                .filter(inv -> inv.getDate() != null)
-                                .forEach(inv -> {
-                                        String key = YearMonth.from(inv.getDate()).toString();
-                                        if (totals.containsKey(key)) {
-                                                double value = inv.getTotalAmount() != null ? inv.getTotalAmount()
-                                                                : 0.0;
-                                                if (inv.isRevenue()) {
-                                                        totals.get(key)[0] += value;
-                                                } else {
-                                                        totals.get(key)[1] += value;
-                                                }
-                                        }
-                                });
-                return totals.entrySet().stream()
-                                .map(entry -> Map.<String, Object>of(
-                                                "month", entry.getKey(),
-                                                "revenue", entry.getValue()[0],
-                                                "expense", entry.getValue()[1]))
-                                .collect(Collectors.toList());
+                return invoiceRepository.getMonthlyEvolutionDetailed(username);
         }
 
         public Map<String, Object> getEmergencyFund(int targetMonths, User user) {
-                List<Invoice> invoices = invoiceRepository.findByUser(user);
-                Map<YearMonth, Double> monthTotals = new HashMap<>();
-                invoices.stream()
-                                .filter(inv -> inv.getDate() != null
-                                                && inv.getCategory() != null)
-                                .filter(inv -> ESSENTIALS_CATEGORIES.contains(inv.getCategory()))
-                                .filter(inv -> !inv.isRevenue())
-                                .forEach(inv -> {
-                                        YearMonth ym = YearMonth.from(inv.getDate());
-                                        double value = inv.getTotalAmount() != null ? inv.getTotalAmount() : 0.0;
-                                        monthTotals.merge(ym, value,
-                                                        (a, b) -> (a == null ? 0.0 : a) + (b == null ? 0.0 : b));
-                                });
-                double avgSpending = monthTotals.isEmpty()
-                                ? 0.0
-                                : monthTotals.values().stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+                Double avgSpending = invoiceRepository.getAverageSpendingForCategoriesIgnoreCase(
+                                ESSENTIALS_CATEGORIES,
+                                user.getUsername());
+
+                if (avgSpending == null)
+                        avgSpending = 0.0;
 
                 BigDecimal targetAmount = BigDecimal.valueOf(avgSpending * targetMonths);
 
@@ -199,48 +102,20 @@ public class FinanceService {
         }
 
         public Map<String, Object> getSavingsRate(int month, int year, String username) {
-                List<Invoice> invoices = getInvoicesForUser(username);
-                double totalRevenue = invoices.stream()
-                                .filter(inv -> inv.getDate() != null
-                                                && inv.getDate().getMonthValue() == month
-                                                && inv.getDate().getYear() == year)
-                                .filter(Invoice::isRevenue)
-                                .map(Invoice::getTotalAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
-                double totalExpense = invoices.stream()
-                                .filter(inv -> inv.getDate() != null
-                                                && inv.getDate().getMonthValue() == month
-                                                && inv.getDate().getYear() == year)
-                                .filter(inv -> !inv.isRevenue())
-                                .map(Invoice::getTotalAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
-                double netRevenue = invoices.stream()
-                                .filter(inv -> inv.getDate() != null
-                                                && inv.getDate().getMonthValue() == month
-                                                && inv.getDate().getYear() == year)
-                                .filter(Invoice::isRevenue)
-                                .map(Invoice::getNetAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
-                double netExpense = invoices.stream()
-                                .filter(inv -> inv.getDate() != null
-                                                && inv.getDate().getMonthValue() == month
-                                                && inv.getDate().getYear() == year)
-                                .filter(inv -> !inv.isRevenue())
-                                .map(Invoice::getNetAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
+                Map<String, Object> totals = invoiceRepository.getMonthlyTotals(month, year, username);
 
-                BigDecimal revenue = BigDecimal.valueOf(totalRevenue);
-                BigDecimal expense = BigDecimal.valueOf(totalExpense);
-                BigDecimal netRevenueBD = BigDecimal.valueOf(netRevenue);
-                BigDecimal netExpenseBD = BigDecimal.valueOf(netExpense);
+                BigDecimal revenue = totals.get("total_revenue") != null
+                                ? new BigDecimal(totals.get("total_revenue").toString())
+                                : BigDecimal.ZERO;
+                BigDecimal expense = totals.get("total_expense") != null
+                                ? new BigDecimal(totals.get("total_expense").toString())
+                                : BigDecimal.ZERO;
+                BigDecimal netRevenue = totals.get("net_revenue") != null
+                                ? new BigDecimal(totals.get("net_revenue").toString())
+                                : BigDecimal.ZERO;
+                BigDecimal netExpense = totals.get("net_expense") != null
+                                ? new BigDecimal(totals.get("net_expense").toString())
+                                : BigDecimal.ZERO;
 
                 BigDecimal savings = revenue.subtract(expense);
                 double savingsRate = 0.0;
@@ -254,8 +129,8 @@ public class FinanceService {
                                 "year", year,
                                 "totalRevenue", revenue,
                                 "totalExpense", expense,
-                                "totalNetRevenue", netRevenueBD,
-                                "totalNetExpense", netExpenseBD,
+                                "totalNetRevenue", netRevenue,
+                                "totalNetExpense", netExpense,
                                 "savingsAmount", savings,
                                 "savingsRate", Math.max(0, savingsRate) // Do not show negative rate when expenses
                                                                         // exceed revenue
@@ -263,40 +138,20 @@ public class FinanceService {
         }
 
         public Map<String, Object> getSavingsRateForYear(int year, String username) {
-                List<Invoice> invoices = getInvoicesForUser(username);
-                double totalRevenue = invoices.stream()
-                                .filter(inv -> inv.getDate() != null && inv.getDate().getYear() == year)
-                                .filter(Invoice::isRevenue)
-                                .map(Invoice::getTotalAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
-                double totalExpense = invoices.stream()
-                                .filter(inv -> inv.getDate() != null && inv.getDate().getYear() == year)
-                                .filter(inv -> !inv.isRevenue())
-                                .map(Invoice::getTotalAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
-                double netRevenue = invoices.stream()
-                                .filter(inv -> inv.getDate() != null && inv.getDate().getYear() == year)
-                                .filter(Invoice::isRevenue)
-                                .map(Invoice::getNetAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
-                double netExpense = invoices.stream()
-                                .filter(inv -> inv.getDate() != null && inv.getDate().getYear() == year)
-                                .filter(inv -> !inv.isRevenue())
-                                .map(Invoice::getNetAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
+                Map<String, Object> totals = invoiceRepository.getYearlyTotals(year, username);
 
-                BigDecimal revenue = BigDecimal.valueOf(totalRevenue);
-                BigDecimal expense = BigDecimal.valueOf(totalExpense);
-                BigDecimal netRevenueBD = BigDecimal.valueOf(netRevenue);
-                BigDecimal netExpenseBD = BigDecimal.valueOf(netExpense);
+                BigDecimal revenue = totals.get("total_revenue") != null
+                                ? new BigDecimal(totals.get("total_revenue").toString())
+                                : BigDecimal.ZERO;
+                BigDecimal expense = totals.get("total_expense") != null
+                                ? new BigDecimal(totals.get("total_expense").toString())
+                                : BigDecimal.ZERO;
+                BigDecimal netRevenue = totals.get("net_revenue") != null
+                                ? new BigDecimal(totals.get("net_revenue").toString())
+                                : BigDecimal.ZERO;
+                BigDecimal netExpense = totals.get("net_expense") != null
+                                ? new BigDecimal(totals.get("net_expense").toString())
+                                : BigDecimal.ZERO;
 
                 BigDecimal savings = revenue.subtract(expense);
                 double savingsRate = 0.0;
@@ -310,8 +165,8 @@ public class FinanceService {
                                 "year", year,
                                 "totalRevenue", revenue,
                                 "totalExpense", expense,
-                                "totalNetRevenue", netRevenueBD,
-                                "totalNetExpense", netExpenseBD,
+                                "totalNetRevenue", netRevenue,
+                                "totalNetExpense", netExpense,
                                 "savingsAmount", savings,
                                 "savingsRate", Math.max(0, savingsRate));
         }
@@ -320,25 +175,13 @@ public class FinanceService {
                 LocalDate now = LocalDate.now();
                 LocalDate lastMonthDate = now.minusMonths(1);
 
-                List<Invoice> invoices = getInvoicesForUser(username);
-                double currentMonth = invoices.stream()
-                                .filter(inv -> inv.getDate() != null
-                                                && inv.getDate().getMonthValue() == now.getMonthValue()
-                                                && inv.getDate().getYear() == now.getYear())
-                                .filter(inv -> !inv.isRevenue())
-                                .map(Invoice::getTotalAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
-                double previousMonth = invoices.stream()
-                                .filter(inv -> inv.getDate() != null
-                                                && inv.getDate().getMonthValue() == lastMonthDate.getMonthValue()
-                                                && inv.getDate().getYear() == lastMonthDate.getYear())
-                                .filter(inv -> !inv.isRevenue())
-                                .map(Invoice::getTotalAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
+                Double currentMonth = invoiceRepository.getTotalSpentInMonthIgnoreCase(
+                                now.getMonthValue(), now.getYear(), username);
+                Double previousMonth = invoiceRepository.getTotalSpentInMonthIgnoreCase(
+                                lastMonthDate.getMonthValue(), lastMonthDate.getYear(), username);
+
+                currentMonth = (currentMonth != null) ? currentMonth : 0.0;
+                previousMonth = (previousMonth != null) ? previousMonth : 0.0;
 
                 double diffPercentage = 0.0;
                 if (previousMonth > 0) {
@@ -352,88 +195,55 @@ public class FinanceService {
         }
 
         public FinanceSnapshot getAllTimeSnapshot(String username) {
-                List<Invoice> invoices = getInvoicesForUser(username);
-                double totalRevenue = invoices.stream()
-                                .filter(Invoice::isRevenue)
-                                .map(Invoice::getTotalAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
-                double totalSpent = invoices.stream()
-                                .filter(inv -> !inv.isRevenue())
-                                .map(Invoice::getTotalAmount)
-                                .filter(val -> val != null)
-                                .mapToDouble(Double::doubleValue)
-                                .sum();
+                LocalDate startDate = LocalDate.of(1970, 1, 1);
+
+                Map<String, Object> totals = invoiceRepository.getTotalsSince(startDate, username);
+                double totalRevenue = toDouble(totals.get("total_revenue"));
+                double totalSpent = toDouble(totals.get("total_expense"));
                 double savingsRate = 0.0;
                 if (totalRevenue > 0) {
                         savingsRate = (totalRevenue - totalSpent) / totalRevenue;
                 }
-                Map<String, Double> categoryTotals = invoices.stream()
-                                .filter(inv -> !inv.isRevenue())
-                                .filter(inv -> inv.getCategory() != null)
-                                .collect(Collectors.groupingBy(Invoice::getCategory,
-                                                Collectors.summingDouble(inv -> inv.getTotalAmount() != null
-                                                                ? inv.getTotalAmount()
-                                                                : 0.0)));
-                List<FinanceSnapshot.TopCategory> topCategoryDtos = categoryTotals.entrySet().stream()
-                                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                                .limit(8)
-                                .map(entry -> new FinanceSnapshot.TopCategory(
-                                                entry.getKey(),
-                                                entry.getValue(),
-                                                totalSpent > 0 ? entry.getValue() / totalSpent : 0.0))
+
+                List<Map<String, Object>> topCategories = invoiceRepository.getTopCategoriesSince(startDate, username);
+                List<FinanceSnapshot.TopCategory> topCategoryDtos = topCategories.stream()
+                                .map(row -> {
+                                        String category = (String) row.get("category");
+                                        double amount = toDouble(row.get("amount"));
+                                        double percentage = totalSpent > 0 ? amount / totalSpent : 0.0;
+                                        return new FinanceSnapshot.TopCategory(category, amount, percentage);
+                                })
                                 .collect(Collectors.toList());
 
-                Map<String, double[]> monthlyTotals = new LinkedHashMap<>();
-                invoices.stream()
-                                .filter(inv -> inv.getDate() != null)
-                                .forEach(inv -> {
-                                        String key = YearMonth.from(inv.getDate()).toString();
-                                        monthlyTotals.putIfAbsent(key, new double[] { 0.0, 0.0 });
-                                        double value = inv.getTotalAmount() != null ? inv.getTotalAmount() : 0.0;
-                                        if (inv.isRevenue()) {
-                                                monthlyTotals.get(key)[1] += value;
-                                        } else {
-                                                monthlyTotals.get(key)[0] += value;
-                                        }
-                                });
-                List<FinanceSnapshot.MonthlyTrend> monthlyTrendDtos = monthlyTotals.entrySet().stream()
-                                .sorted(Map.Entry.comparingByKey())
-                                .map(entry -> new FinanceSnapshot.MonthlyTrend(
-                                                entry.getKey(),
-                                                entry.getValue()[0],
-                                                entry.getValue()[1]))
+                List<Map<String, Object>> monthlyTrend = invoiceRepository.getMonthlyTrendSince(startDate, username);
+                List<FinanceSnapshot.MonthlyTrend> monthlyTrendDtos = monthlyTrend.stream()
+                                .map(row -> new FinanceSnapshot.MonthlyTrend(
+                                                (String) row.get("month"),
+                                                toDouble(row.get("total_expense")),
+                                                toDouble(row.get("total_revenue"))))
                                 .collect(Collectors.toList());
 
-                Map<String, Double> issuerTotals = invoices.stream()
-                                .filter(inv -> !inv.isRevenue())
-                                .filter(inv -> inv.getIssuer() != null && inv.getIssuer().getName() != null)
-                                .collect(Collectors.groupingBy(inv -> inv.getIssuer().getName(),
-                                                Collectors.summingDouble(inv -> inv.getTotalAmount() != null
-                                                                ? inv.getTotalAmount()
-                                                                : 0.0)));
-                List<FinanceSnapshot.TopCompany> topCompanyDtos = issuerTotals.entrySet().stream()
-                                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                                .limit(8)
-                                .map(entry -> new FinanceSnapshot.TopCompany(
-                                                entry.getKey(),
-                                                entry.getValue(),
-                                                totalSpent > 0 ? entry.getValue() / totalSpent : 0.0))
+                List<Map<String, Object>> topCompanies = invoiceRepository.getTopIssuersSince(startDate, username);
+                List<FinanceSnapshot.TopCompany> topCompanyDtos = topCompanies.stream()
+                                .map(row -> {
+                                        String name = (String) row.get("name");
+                                        double amount = toDouble(row.get("amount"));
+                                        double percentage = totalSpent > 0 ? amount / totalSpent : 0.0;
+                                        return new FinanceSnapshot.TopCompany(name, amount, percentage);
+                                })
                                 .collect(Collectors.toList());
 
-                List<FinanceSnapshot.TopInvoice> topInvoiceDtos = invoices.stream()
-                                .filter(inv -> !inv.isRevenue())
-                                .sorted(Comparator.comparing(Invoice::getTotalAmount,
-                                                Comparator.nullsLast(Double::compareTo)).reversed())
-                                .limit(8)
-                                .map(inv -> new FinanceSnapshot.TopInvoice(
-                                                inv.getIssuer() != null ? inv.getIssuer().getName() : null,
-                                                inv.getCategory(),
-                                                inv.getDate() != null ? inv.getDate().toString() : null,
-                                                inv.getTotalAmount() != null ? inv.getTotalAmount() : 0.0,
-                                                inv.getDocumentNum()))
+                List<Map<String, Object>> topInvoices = invoiceRepository.getTopInvoicesSince(startDate, username);
+                List<FinanceSnapshot.TopInvoice> topInvoiceDtos = topInvoices.stream()
+                                .map(row -> new FinanceSnapshot.TopInvoice(
+                                                (String) row.get("issuer_name"),
+                                                (String) row.get("category"),
+                                                row.get("issue_date").toString(),
+                                                toDouble(row.get("total_amount")),
+                                                (String) row.get("document_num")))
                                 .collect(Collectors.toList());
+
+                List<Invoice> invoices = invoiceRepository.getInvoicesSince(startDate, username);
                 List<FinanceSnapshot.InvoiceEntry> invoiceDtos = invoices.stream()
                                 .map(invoice -> {
                                         List<FinanceSnapshot.InvoiceItem> itemDtos = Optional
@@ -447,7 +257,8 @@ public class FinanceService {
                                                                         : null,
                                                         invoice.getIssuer() != null ? invoice.getIssuer().getTaxId()
                                                                         : null,
-                                                        invoice.getCategory(),
+                                                        invoice.getIssuer() != null ? invoice.getIssuer().getCategory()
+                                                                        : null,
                                                         invoice.getDate() != null ? invoice.getDate().toString() : null,
                                                         invoice.getDocumentNum(),
                                                         Boolean.TRUE.equals(invoice.isRevenue()),
@@ -490,12 +301,6 @@ public class FinanceService {
                                 topInvoiceDtos,
                                 invoiceDtos,
                                 goalDtos);
-        }
-
-        private List<Invoice> getInvoicesForUser(String username) {
-                User user = userRepository.findByUsernameIgnoreCase(username)
-                                .orElseThrow(() -> new RuntimeException("User not found"));
-                return invoiceRepository.findByUser(user);
         }
 
         private double toDouble(Object value) {

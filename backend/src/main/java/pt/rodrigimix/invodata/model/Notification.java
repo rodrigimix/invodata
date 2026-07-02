@@ -20,17 +20,11 @@ public class Notification {
     private String message;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 32)
     private NotificationType type; // WARNING, SUCCESS, INFO
 
     private boolean isRead = false;
 
     private LocalDateTime createdAt;
-
-    private String actionUrl;
-
-    @Column(name = "share_id")
-    private Long shareId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
@@ -39,7 +33,6 @@ public class Notification {
     public enum NotificationType {
         BUDGET_ALERT,
         STREAK_UPDATE,
-        SHARE,
         SYSTEM
     }
 }

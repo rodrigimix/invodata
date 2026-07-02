@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -51,11 +50,6 @@ import { MoreVertical, Pencil, Trash2 } from "lucide-react";
 
 const Accounts = () => {
   const { t, i18n } = useTranslation();
-  const isPt = i18n.language?.toLowerCase().startsWith("pt");
-  const surveyUrl = isPt
-    ? "https://forms.gle/J8a4V2sUE8jn43pE6"
-    : "https://forms.gle/SEjfKLthcsonTbCEA";
-  const surveyLabel = isPt ? "Responder ao inquérito" : "Take the survey";
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -239,17 +233,17 @@ const Accounts = () => {
 
   return (
     <DashboardLayout>
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
-        <div className="space-y-1">
+      <div className="flex items-center justify-between mb-6">
+        <div>
           <h1 className="text-3xl font-bold text-foreground">{t("accounts.title")}</h1>
           <p className="text-muted-foreground mt-1">
             {t("accounts.subtitle")}
           </p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-3">
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline" className="w-full sm:w-auto">{t("accounts.addBalance.title")}</Button>
+              <Button variant="outline">{t("accounts.addBalance.title")}</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -286,7 +280,7 @@ const Accounts = () => {
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto">{t("accounts.create.title")}</Button>
+              <Button>{t("accounts.create.title")}</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -362,7 +356,7 @@ const Accounts = () => {
       )}
 
       <div className="invodata-card p-6 mb-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">{t("accounts.list.title")}</h2>
           <span className="text-sm text-muted-foreground">
             {t("accounts.list.count", { count: accounts.length })}
@@ -374,7 +368,7 @@ const Accounts = () => {
         {!isLoading && accounts.length === 0 && (
           <div className="text-sm text-muted-foreground">{t("accounts.list.empty")}</div>
         )}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-3 gap-4">
           {accounts.map((account) => {
             const isActive = account.id === selectedId;
             return (
@@ -451,7 +445,7 @@ const Accounts = () => {
       </div>
 
       <div className="invodata-card p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">{t("accounts.invoices.title")}</h2>
           {selectedAccount && (
             <span className="text-sm text-muted-foreground">
@@ -469,7 +463,7 @@ const Accounts = () => {
           <div className="space-y-3">
             {invoices.map((invoice) => (
               <div key={invoice.id} className="border border-border rounded-lg p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-foreground">{invoice.documentNum}</p>
                     <p className="text-xs text-muted-foreground">
@@ -485,23 +479,6 @@ const Accounts = () => {
           </div>
         )}
       </div>
-
-      <footer className="mt-12 pt-6 border-t border-border">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <p className="text-sm text-muted-foreground">{t("app.footer")}</p>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-            <Link to="/terms" className="hover:text-foreground">
-              {t("auth.termsLink")}
-            </Link>
-            <Link to="/privacy" className="hover:text-foreground">
-              {t("auth.privacyPolicy")}
-            </Link>
-            <a href={surveyUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
-              {surveyLabel}
-            </a>
-          </div>
-        </div>
-      </footer>
 
       <Dialog open={Boolean(editingAccount)} onOpenChange={(open) => !open && setEditingAccount(null)}>
         <DialogContent>

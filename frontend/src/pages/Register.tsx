@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,18 +12,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Eye, EyeOff, Check, FileText } from "lucide-react";
-import { getSetupStatus, getStoredLanguage, registerUser, setStoredLanguage } from "@/lib/api";
+import { getStoredLanguage, registerUser, setAuth, setStoredLanguage } from "@/lib/api";
 import { useTranslation } from "react-i18next";
-import { useUploadJobs } from "@/context/UploadJobContext";
 
 const Register = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { clearCompletedEntries } = useUploadJobs();
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [language, setLanguage] = useState(() => getStoredLanguage() || i18n.language || "pt");
   const [formData, setFormData] = useState({
     name: "",
@@ -31,31 +28,9 @@ const Register = () => {
     email: "",
     password: "",
     confirmPassword: "",
+    adminKey: "",
     aiConsent: false,
-    privacyConsent: false,
-    termsConsent: false,
   });
-
-  useEffect(() => {
-    clearCompletedEntries();
-  }, [clearCompletedEntries]);
-
-  useEffect(() => {
-    let isMounted = true;
-    getSetupStatus()
-      .then((status) => {
-        if (!isMounted) return;
-        if (!status.setupCompleted) {
-          navigate("/setup", { replace: true });
-        }
-      })
-      .catch(() => {
-        // Ignore setup status errors to avoid blocking registration.
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, [navigate]);
 
   const handleLanguageChange = (value: string) => {
     setLanguage(value);
@@ -66,30 +41,6 @@ const Register = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const nextErrors: Record<string, string> = {};
-    if (!formData.name.trim()) {
-      nextErrors.name = requiredFieldMessage(t("auth.name"));
-    }
-    if (!formData.username.trim()) {
-      nextErrors.username = requiredFieldMessage(t("auth.username"));
-    }
-    if (!formData.email.trim()) {
-      nextErrors.email = requiredFieldMessage(t("auth.email"));
-    }
-    if (!formData.password.trim()) {
-      nextErrors.password = requiredFieldMessage(t("auth.password"));
-    }
-    if (!formData.privacyConsent) {
-      nextErrors.privacyConsent = t("auth.privacyRequired");
-    }
-    if (!formData.termsConsent) {
-      nextErrors.termsConsent = t("auth.termsRequired");
-    }
-    if (Object.keys(nextErrors).length > 0) {
-      setFieldErrors(nextErrors);
-      return;
-    }
-    setFieldErrors({});
     if (formData.password !== formData.confirmPassword) {
       setError(t("auth.passwordMismatch"));
       return;
@@ -101,13 +52,14 @@ const Register = () => {
         password: formData.password,
         email: formData.email,
         name: formData.name,
+        adminKey: formData.adminKey,
         aiConsent: formData.aiConsent,
-        privacyConsent: formData.privacyConsent,
       });
-      const registeredMessage = i18n.language?.toLowerCase().startsWith("pt")
-        ? "Conta registada. Faz login para continuar."
-        : "Account created. Please sign in to continue.";
-      navigate("/login", { state: { registeredMessage } });
+      setAuth(response.token, response.user);
+      if (response.user?.language) {
+        i18n.changeLanguage(response.user.language);
+      }
+      navigate("/dashboard");
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : t("auth.registerError");
       const lower = rawMessage.toLowerCase();
@@ -121,9 +73,6 @@ const Register = () => {
       setIsSubmitting(false);
     }
   };
-
-  const requiredFieldMessage = (field: string) =>
-    t("auth.requiredField", { field });
 
   const passwordRequirements = [
     { label: t("auth.passwordMin"), met: formData.password.length >= 8 },
@@ -164,93 +113,66 @@ const Register = () => {
             </Select>
           </div>
           {/* Logo */}
-          <div className="mb-10">
-            <div className="w-full rounded-lg border border-border bg-background/80 p-5 shadow-sm">
-              <img src="/logo.png" alt={t("app.brand")} className="h-28 w-full object-contain" />
+          <div className="flex items-center gap-3 mb-8">
+            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+              <FileText className="w-5 h-5 text-primary-foreground" aria-hidden="true" />
             </div>
+            <span className="font-bold text-xl text-foreground">{t("app.brand")}</span>
           </div>
 
           <h1 className="text-3xl font-bold text-foreground mb-2">{t("auth.register")}</h1>
           <p className="text-muted-foreground mb-8">
             {t("auth.registerPrompt")}
           </p>
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">
-                  {t("auth.name")} <span className="text-danger">*</span>
-                </Label>
+                <Label htmlFor="name">{t("auth.name")}</Label>
                 <Input
                   id="name"
                   type="text"
                   placeholder={t("auth.namePlaceholder")}
                   value={formData.name}
-                  onChange={(e) => {
-                    setFormData({ ...formData, name: e.target.value });
-                    setFieldErrors((prev) => ({ ...prev, name: "" }));
-                  }}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="h-11"
                 />
-                {fieldErrors.name && (
-                  <p className="text-xs text-danger">{fieldErrors.name}</p>
-                )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="username">
-                  {t("auth.username")} <span className="text-danger">*</span>
-                </Label>
+                <Label htmlFor="username">{t("auth.username")}</Label>
                 <Input
                   id="username"
                   type="text"
                   placeholder={t("auth.usernamePlaceholderRegister")}
                   value={formData.username}
-                  onChange={(e) => {
-                    setFormData({ ...formData, username: e.target.value });
-                    setFieldErrors((prev) => ({ ...prev, username: "" }));
-                  }}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   className="h-11"
                 />
-                {fieldErrors.username && (
-                  <p className="text-xs text-danger">{fieldErrors.username}</p>
-                )}
                 <p className="text-xs text-muted-foreground">{t("auth.usernameRule")}</p>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">
-                {t("auth.email")} <span className="text-danger">*</span>
-              </Label>
+              <Label htmlFor="email">{t("auth.email")}</Label>
               <Input
                 id="email"
                 type="email"
                 placeholder={t("auth.emailPlaceholder")}
                 value={formData.email}
-                onChange={(e) => {
-                  setFormData({ ...formData, email: e.target.value });
-                  setFieldErrors((prev) => ({ ...prev, email: "" }));
-                }}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="h-11"
               />
-              {fieldErrors.email && (
-                <p className="text-xs text-danger">{fieldErrors.email}</p>
-              )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">
-                {t("auth.password")} <span className="text-danger">*</span>
-              </Label>
+              <Label htmlFor="password">{t("auth.password")}</Label>
               <div className="relative">
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={formData.password}
-                  onChange={(e) => {
-                    setFormData({ ...formData, password: e.target.value });
-                    setFieldErrors((prev) => ({ ...prev, password: "" }));
-                  }}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="h-11 pr-10"
                 />
                 <button
@@ -261,9 +183,6 @@ const Register = () => {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-              {fieldErrors.password && (
-                <p className="text-xs text-danger">{fieldErrors.password}</p>
-              )}
 
               {/* Password requirements */}
               <div className="grid grid-cols-2 gap-1 mt-2">
@@ -292,6 +211,18 @@ const Register = () => {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="adminKey">{t("auth.adminKey")}</Label>
+              <Input
+                id="adminKey"
+                type="text"
+                placeholder={t("auth.adminKeyPlaceholder")}
+                value={formData.adminKey}
+                onChange={(e) => setFormData({ ...formData, adminKey: e.target.value })}
+                className="h-11"
+              />
+            </div>
+
             <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3">
               <Checkbox
                 id="aiConsent"
@@ -307,56 +238,6 @@ const Register = () => {
                 <p className="text-xs text-muted-foreground">
                   {t("auth.aiConsentText")}
                 </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3">
-              <Checkbox
-                id="privacyConsent"
-                checked={formData.privacyConsent}
-                onCheckedChange={(checked) => {
-                  setFormData({ ...formData, privacyConsent: checked === true });
-                  setFieldErrors((prev) => ({ ...prev, privacyConsent: "" }));
-                }}
-              />
-              <div className="space-y-1">
-                <Label htmlFor="privacyConsent" className="text-sm font-medium text-foreground">
-                  {t("auth.privacyConsentTitle")} <span className="text-danger">*</span>
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t("auth.privacyConsentText")} {" "}
-                  <Link to="/privacy" className="text-primary hover:underline">
-                    {t("auth.privacyPolicy")}
-                  </Link>
-                </p>
-                {fieldErrors.privacyConsent && (
-                  <p className="text-xs text-danger">{fieldErrors.privacyConsent}</p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3">
-              <Checkbox
-                id="termsConsent"
-                checked={formData.termsConsent}
-                onCheckedChange={(checked) => {
-                  setFormData({ ...formData, termsConsent: checked === true });
-                  setFieldErrors((prev) => ({ ...prev, termsConsent: "" }));
-                }}
-              />
-              <div className="space-y-1">
-                <Label htmlFor="termsConsent" className="text-sm font-medium text-foreground">
-                  {t("auth.termsConsentTitle")} <span className="text-danger">*</span>
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t("auth.termsConsentText")} {" "}
-                  <Link to="/terms" className="text-primary hover:underline">
-                    {t("auth.termsLink")}
-                  </Link>
-                </p>
-                {fieldErrors.termsConsent && (
-                  <p className="text-xs text-danger">{fieldErrors.termsConsent}</p>
-                )}
               </div>
             </div>
 

@@ -8,6 +8,8 @@ import org.springframework.web.server.ResponseStatusException;
 import pt.rodrigimix.invodata.dto.AccountUpdateRequest;
 import pt.rodrigimix.invodata.model.Account;
 import pt.rodrigimix.invodata.model.BalanceHistory;
+import pt.rodrigimix.invodata.model.Goal;
+import pt.rodrigimix.invodata.model.Invoice;
 import pt.rodrigimix.invodata.model.User;
 import pt.rodrigimix.invodata.repository.AccountRepository;
 import pt.rodrigimix.invodata.repository.BalanceHistoryRepository;
@@ -50,13 +52,7 @@ public class AccountService {
     }
 
     public Account getAccountByName(String name, User user) {
-        if (name == null) {
-            return null;
-        }
-        return accountRepository.findByUser(user).stream()
-                .filter(account -> account.getName() != null
-                        && account.getName().equalsIgnoreCase(name))
-                .findFirst()
+        return accountRepository.findByUserAndNameIgnoreCase(user, name)
                 .orElse(null);
     }
 
@@ -64,12 +60,11 @@ public class AccountService {
         if (last4 == null || last4.isBlank()) {
             return null;
         }
-        String normalized = last4.replaceAll("\\s+", "");
-        List<Account> matches = accountRepository.findByUser(user).stream()
-                .filter(account -> account.getLast4() != null
-                        && account.getLast4().equalsIgnoreCase(normalized))
-                .toList();
-        return matches.size() == 1 ? matches.get(0) : null;
+        List<Account> matches = accountRepository.findByUserAndLast4(user, last4);
+        if (matches.size() == 1) {
+            return matches.get(0);
+        }
+        return null;
     }
 
     public Account getAccountById(Long id, User user) {
@@ -152,9 +147,8 @@ public class AccountService {
 
     public void saveBalanceSnapshot(Account account) {
         LocalDate today = LocalDate.now();
-        BalanceHistory history = balanceHistoryRepository.findByAccount(account).stream()
-                .filter(entry -> entry.getDate() != null && entry.getDate().equals(today))
-                .findFirst()
+        BalanceHistory history = balanceHistoryRepository
+                .findByAccountAndDate(account, today)
                 .orElse(BalanceHistory.builder()
                         .account(account)
                         .date(today)

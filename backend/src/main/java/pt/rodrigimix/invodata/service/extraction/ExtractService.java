@@ -174,10 +174,6 @@ public class ExtractService {
                 .revenue(isRevenue)
                 .build();
 
-        if (aiData.category() != null && !aiData.category().isBlank()) {
-            invoice.setCategory(aiData.category().trim());
-        }
-
         for (AiExtractionResponse.AiItem item : extractedItems) {
             Item item1 = Item.builder()
                     .description(titleCase(item.description()))

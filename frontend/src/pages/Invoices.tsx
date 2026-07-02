@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +17,7 @@ import {
   Trash2,
   Calendar as CalendarIcon
 } from "lucide-react";
-import { format, parse, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
 import {
   Select,
   SelectContent,
@@ -45,19 +44,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useSearchParams } from "react-router-dom";
-import {
-  declineUserShare,
-  deleteInvoice,
-  getInvoiceCategories,
-  getInvoiceById,
-  getInvoiceSummary,
-  getInvoices,
-  Invoice,
-  InvoiceCategory,
-  getAuthToken,
-  InvoiceTotalsResponse
-} from "@/lib/api";
+import { Link, useSearchParams } from "react-router-dom";
+import { deleteInvoice, getInvoiceById, getInvoiceSummary, getInvoices, Invoice, getAuthToken, InvoiceTotalsResponse, getCustomCategories, CustomCategory } from "@/lib/api";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
@@ -72,12 +60,8 @@ const getInitials = (name?: string) => {
 };
 
 const Invoices = () => {
+  const [jumpPage, setJumpPage] = useState("");
   const { t, i18n } = useTranslation();
-  const isPt = i18n.language?.toLowerCase().startsWith("pt");
-  const surveyUrl = isPt
-    ? "https://forms.gle/J8a4V2sUE8jn43pE6"
-    : "https://forms.gle/SEjfKLthcsonTbCEA";
-  const surveyLabel = isPt ? "Responder ao inquérito" : "Take the survey";
   const [showAddInvoice, setShowAddInvoice] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,8 +73,6 @@ const Invoices = () => {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
-  const [customStartInput, setCustomStartInput] = useState("");
-  const [customEndInput, setCustomEndInput] = useState("");
   const [page, setPage] = useState(0);
   const pageSize = 10;
   const [totalsScope, setTotalsScope] = useState<"page" | "all">("page");
@@ -98,12 +80,10 @@ const Invoices = () => {
   const [isTotalsLoading, setIsTotalsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Invoice | null>(null);
-  const [pendingSharedRemove, setPendingSharedRemove] = useState<Invoice | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isRemovingShare, setIsRemovingShare] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [categories, setCategories] = useState<InvoiceCategory[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const filterStorageKey = "invodata_invoice_filters";
   const restoreRef = useRef(false);
   const fileNameFilter = searchParams.get("fileName") || undefined;
@@ -113,21 +93,6 @@ const Invoices = () => {
   const paymentMethodParam = searchParams.get("paymentMethod") || "";
   const startDateParam = searchParams.get("startDate") || "";
   const endDateParam = searchParams.get("endDate") || "";
-
-  const handleRemoveSharedInvoice = async () => {
-    if (!pendingSharedRemove?.shareId || isRemovingShare) return;
-    setIsRemovingShare(true);
-    try {
-      await declineUserShare(pendingSharedRemove.shareId);
-      setPendingSharedRemove(null);
-      setRefreshKey((prev) => prev + 1);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t("invoices.sharedRemoveError");
-      setError(message);
-    } finally {
-      setIsRemovingShare(false);
-    }
-  };
 
   const updateUrlParams = (updates: Record<string, string | null | undefined>) => {
     const next = new URLSearchParams(searchParams);
@@ -175,14 +140,15 @@ const Invoices = () => {
 
   useEffect(() => {
     let isMounted = true;
-    getInvoiceCategories()
-      .then((data) => {
+    getCustomCategories()
+      .then((categories) => {
         if (!isMounted) return;
-        setCategories(data || []);
+        setCustomCategories(categories || []);
       })
-      .catch(() => {
+      .catch((err) => {
         if (!isMounted) return;
-        setCategories([]);
+        console.warn("Failed to load custom categories:", err);
+        setCustomCategories([]);
       });
     return () => {
       isMounted = false;
@@ -228,14 +194,10 @@ const Invoices = () => {
         setPeriodFilter("custom");
       }
       if (startDateParam) {
-        const parsedStart = parseISO(startDateParam);
-        setCustomStartDate(parsedStart);
-        setCustomStartInput(formatDateDisplay(parsedStart));
+        setCustomStartDate(parseISO(startDateParam));
       }
       if (endDateParam) {
-        const parsedEnd = parseISO(endDateParam);
-        setCustomEndDate(parsedEnd);
-        setCustomEndInput(formatDateDisplay(parsedEnd));
+        setCustomEndDate(parseISO(endDateParam));
       }
     }
   }, [searchParam, periodParam, categoryParam, paymentMethodParam, startDateParam, endDateParam]);
@@ -259,8 +221,6 @@ const Invoices = () => {
     if (periodFilter !== "custom" && !startDateParam && !endDateParam) {
       setCustomStartDate(undefined);
       setCustomEndDate(undefined);
-      setCustomStartInput("");
-      setCustomEndInput("");
     }
   }, [periodFilter, startDateParam, endDateParam]);
 
@@ -284,7 +244,7 @@ const Invoices = () => {
     getInvoices(
       page,
       pageSize,
-      undefined,
+        "date,desc",
       undefined,
       fileNameFilter,
       undefined,
@@ -408,7 +368,7 @@ const Invoices = () => {
     if (!pendingDelete || isDeleting) return;
     setIsDeleting(true);
     try {
-      await deleteInvoice(pendingDelete.publicId);
+      await deleteInvoice(pendingDelete.id);
       setPendingDelete(null);
       setPage((current) => (current > 0 && invoices.length === 1 ? current - 1 : current));
       setRefreshKey((current) => current + 1);
@@ -435,22 +395,6 @@ const Invoices = () => {
   const formatDateDisplay = (value?: Date) => {
     if (!value) return "";
     return format(value, "dd/MM/yyyy");
-  };
-
-  const formatDateInput = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 8);
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-  };
-
-  const parseDisplayDateInput = (value: string) => {
-    const trimmed = value.trim();
-    const fullMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (!fullMatch) return undefined;
-    const parsed = parse(trimmed, "dd/MM/yyyy", new Date());
-    if (Number.isNaN(parsed.getTime())) return undefined;
-    return parsed;
   };
 
   const handlePeriodChange = (value: string) => {
@@ -481,7 +425,6 @@ const Invoices = () => {
   const handleCustomStartDate = (date?: Date) => {
     const nextDate = date ?? undefined;
     setCustomStartDate(nextDate);
-    setCustomStartInput(nextDate ? formatDateDisplay(nextDate) : "");
     updateUrlParams({
       period: "custom",
       startDate: formatDateToIso(nextDate) ?? null,
@@ -491,7 +434,6 @@ const Invoices = () => {
   const handleCustomEndDate = (date?: Date) => {
     const nextDate = date ?? undefined;
     setCustomEndDate(nextDate);
-    setCustomEndInput(nextDate ? formatDateDisplay(nextDate) : "");
     updateUrlParams({
       period: "custom",
       endDate: formatDateToIso(nextDate) ?? null,
@@ -550,7 +492,7 @@ const Invoices = () => {
       const detailedInvoices = await Promise.all(
         allInvoices.map(async (invoice) => {
           try {
-            return await getInvoiceById(invoice.publicId);
+            return await getInvoiceById(invoice.id);
           } catch {
             return invoice;
           }
@@ -581,9 +523,9 @@ const Invoices = () => {
         const baseRow = [
           invoice.documentNum || "",
           invoice.issuer?.name || "",
-          invoice.category
-            ? t(`issuerCategories.${invoice.category.toUpperCase()}`, {
-              defaultValue: invoice.category,
+          invoice.issuer?.category
+            ? t(`issuerCategories.${invoice.issuer?.category.toUpperCase()}`, {
+              defaultValue: invoice.issuer?.category,
             })
             : "",
           formatDate(invoice.date),
@@ -632,35 +574,38 @@ const Invoices = () => {
   const getIssuerCategoryLabel = (category?: string | null) => {
     if (!category) return t("invoices.noCategory");
     const normalized = category.trim().toUpperCase();
+
+    // Check if it's a custom category
+    if (normalized.startsWith("CUSTOM_")) {
+      const customId = parseInt(normalized.replace("CUSTOM_", ""), 10);
+      const customCat = customCategories.find(c => c.id === customId);
+      if (customCat) {
+        return customCat.name;
+      }
+      return t("invoices.noCategory");
+    }
+
     return t(`issuerCategories.${normalized}`, { defaultValue: category });
-  };
-  const getCategoryColor = (category?: string | null) => {
-    if (!category) return null;
-    const normalized = category.trim().toUpperCase();
-    const match = categories.find((entry) => entry.name.toUpperCase() === normalized);
-    return match?.color || null;
-  };
-  const getReadableTextColor = (hex: string) => {
-    const value = hex.replace("#", "");
-    if (value.length !== 6) return "#FFFFFF";
-    const r = parseInt(value.slice(0, 2), 16);
-    const g = parseInt(value.slice(2, 4), 16);
-    const b = parseInt(value.slice(4, 6), 16);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance > 0.6 ? "#0F172A" : "#FFFFFF";
   };
   const getIssuerCategoryStyles = (category?: string | null) => {
     if (!category) {
-      return { className: "bg-muted text-muted-foreground border border-border" };
+      return "bg-muted text-muted-foreground border border-border";
     }
     const normalized = category.trim().toUpperCase();
-    const customColor = getCategoryColor(normalized);
-    if (customColor) {
-      return {
-        className: "border border-transparent",
-        style: { backgroundColor: customColor, color: getReadableTextColor(customColor) },
-      };
+    
+    // Check if it's a custom category
+    if (normalized.startsWith("CUSTOM_")) {
+      const customId = parseInt(normalized.replace("CUSTOM_", ""), 10);
+      const customCat = customCategories.find(c => c.id === customId);
+      if (customCat && customCat.color) {
+        const rgb = hexToRgb(customCat.color);
+        if (rgb) {
+          const isDark = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000 < 128;
+          return `text-${isDark ? "white" : "black"} border border-transparent`; 
+        }
+      }
     }
+    
     const styles: Record<string, string> = {
       FUEL: "bg-warning text-warning-foreground border border-transparent",
       RESTAURANT: "bg-danger text-danger-foreground border border-transparent",
@@ -675,49 +620,50 @@ const Invoices = () => {
       SERVICES: "bg-invodata-600 text-white border border-transparent",
       REVENUE: "bg-invodata-500 text-white border border-transparent",
     };
-    return { className: styles[normalized] || "bg-muted text-muted-foreground border border-border" };
+    return styles[normalized] || "bg-muted text-muted-foreground border border-border";
   };
 
-  const categoryFilterOptions = useMemo(() => {
-    const base = [
-      { value: "REVENUE", label: t("issuerCategories.REVENUE", { defaultValue: "Revenue" }) },
-      { value: "FUEL", label: t("issuerCategories.FUEL", { defaultValue: "Fuel" }) },
-      { value: "RESTAURANT", label: t("issuerCategories.RESTAURANT", { defaultValue: "Restaurant" }) },
-      { value: "SUPERMARKET", label: t("issuerCategories.SUPERMARKET", { defaultValue: "Supermarket" }) },
-      { value: "TRANSPORT", label: t("issuerCategories.TRANSPORT", { defaultValue: "Transport" }) },
-      { value: "HEALTH", label: t("issuerCategories.HEALTH", { defaultValue: "Health" }) },
-      { value: "UTILITIES", label: t("issuerCategories.UTILITIES", { defaultValue: "Utilities" }) },
-      { value: "TELECOM", label: t("issuerCategories.TELECOM", { defaultValue: "Telecom" }) },
-      { value: "CLOTHING", label: t("issuerCategories.CLOTHING", { defaultValue: "Clothing" }) },
-      { value: "EDUCATION", label: t("issuerCategories.EDUCATION", { defaultValue: "Education" }) },
-      { value: "ENTERTAINMENT", label: t("issuerCategories.ENTERTAINMENT", { defaultValue: "Entertainment" }) },
-      { value: "SERVICES", label: t("issuerCategories.SERVICES", { defaultValue: "Services" }) },
-    ];
-    const seen = new Set(base.map((entry) => entry.value.toUpperCase()));
-    const custom = categories
-      .filter((category) => !seen.has(category.name.toUpperCase()))
-      .map((category) => ({
-        value: category.name,
-        label: category.name,
-        color: category.color,
-      }));
-    return [...base, ...custom];
-  }, [categories, t]);
+  const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16),
+    } : null;
+  };
+
+  const getCategoryBackgroundColor = (category?: string | null): string => {
+    if (!category) {
+      return "";
+    }
+    const normalized = category.trim().toUpperCase();
+    
+    // Check if it's a custom category
+    if (normalized.startsWith("CUSTOM_")) {
+      const customId = parseInt(normalized.replace("CUSTOM_", ""), 10);
+      const customCat = customCategories.find(c => c.id === customId);
+      if (customCat && customCat.color) {
+        return customCat.color;
+      }
+    }
+    
+    return "";
+  };
 
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
-        <div className="space-y-1">
+      <div className="flex items-center justify-between mb-6">
+        <div>
           <h1 className="text-3xl font-bold text-foreground">{t("invoices.title")}</h1>
           <p className="text-muted-foreground mt-1">{t("invoices.subtitle")}</p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Button onClick={() => setShowAddInvoice(true)} className="gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-3">
+          <Button onClick={() => setShowAddInvoice(true)} className="gap-2">
             <Plus className="w-4 h-4" />
             {t("invoices.createNew")}
           </Button>
-          <Button variant="outline" className="gap-2 w-full sm:w-auto" onClick={handleExport} disabled={isExporting}>
+          <Button variant="outline" className="gap-2" onClick={handleExport} disabled={isExporting}>
             <Download className="w-4 h-4" />
             {isExporting ? t("invoices.exporting") : t("invoices.export")}
           </Button>
@@ -766,17 +712,27 @@ const Invoices = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t("invoices.categoryAll")}</SelectItem>
-                  {categoryFilterOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <span className="flex items-center gap-2">
-                        {option.color ? (
-                          <span
-                            className="h-2.5 w-2.5 rounded-full border border-border"
-                            style={{ backgroundColor: option.color }}
-                          />
-                        ) : null}
-                        {option.label}
-                      </span>
+                  <SelectItem value="REVENUE">{t("issuerCategories.REVENUE", { defaultValue: "Revenue" })}</SelectItem>
+                  <SelectItem value="FUEL">{t("issuerCategories.FUEL", { defaultValue: "Fuel" })}</SelectItem>
+                  <SelectItem value="RESTAURANT">{t("issuerCategories.RESTAURANT", { defaultValue: "Restaurant" })}</SelectItem>
+                  <SelectItem value="SUPERMARKET">{t("issuerCategories.SUPERMARKET", { defaultValue: "Supermarket" })}</SelectItem>
+                  <SelectItem value="TRANSPORT">{t("issuerCategories.TRANSPORT", { defaultValue: "Transport" })}</SelectItem>
+                  <SelectItem value="HEALTH">{t("issuerCategories.HEALTH", { defaultValue: "Health" })}</SelectItem>
+                  <SelectItem value="UTILITIES">{t("issuerCategories.UTILITIES", { defaultValue: "Utilities" })}</SelectItem>
+                  <SelectItem value="TELECOM">{t("issuerCategories.TELECOM", { defaultValue: "Telecom" })}</SelectItem>
+                  <SelectItem value="CLOTHING">{t("issuerCategories.CLOTHING", { defaultValue: "Clothing" })}</SelectItem>
+                  <SelectItem value="EDUCATION">{t("issuerCategories.EDUCATION", { defaultValue: "Education" })}</SelectItem>
+                  <SelectItem value="ENTERTAINMENT">{t("issuerCategories.ENTERTAINMENT", { defaultValue: "Entertainment" })}</SelectItem>
+                  <SelectItem value="SERVICES">{t("issuerCategories.SERVICES", { defaultValue: "Services" })}</SelectItem>
+                  {customCategories.map((cat) => (
+                    <SelectItem key={cat.id} value={`CUSTOM_${cat.id}`}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full border border-border"
+                          style={{ backgroundColor: cat.color || "#3B82F6" }}
+                        />
+                        {cat.name}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -804,91 +760,49 @@ const Invoices = () => {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="filter-start-date">{t("invoices.periodStartDate")}</Label>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Input
-                    id="filter-start-date"
-                    placeholder={t("invoices.periodDatePlaceholder")}
-                    value={customStartInput}
-                    onChange={(event) => {
-                      const value = formatDateInput(event.target.value);
-                      setCustomStartInput(value);
-                      const parsed = parseDisplayDateInput(value);
-                      if (parsed) {
-                        handleCustomStartDate(parsed);
-                      } else if (!value.trim()) {
-                        handleCustomStartDate(undefined);
-                      }
-                    }}
-                    onBlur={() => {
-                      setCustomStartInput(customStartDate ? formatDateDisplay(customStartDate) : "");
-                    }}
-                  />
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label={t("invoices.periodStartDate")}
-                        className="w-full sm:w-auto"
-                      >
-                        <CalendarIcon className="h-4 w-4" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={customStartDate}
-                        onSelect={(date) => handleCustomStartDate(date ?? undefined)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="filter-start-date"
+                      variant="outline"
+                      className={cn("w-full justify-start text-left font-normal", !customStartDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {customStartDate ? formatDateDisplay(customStartDate) : t("invoices.periodDatePlaceholder")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={customStartDate}
+                      onSelect={(date) => handleCustomStartDate(date ?? undefined)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="filter-end-date">{t("invoices.periodEndDate")}</Label>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Input
-                    id="filter-end-date"
-                    placeholder={t("invoices.periodDatePlaceholder")}
-                    value={customEndInput}
-                    onChange={(event) => {
-                      const value = formatDateInput(event.target.value);
-                      setCustomEndInput(value);
-                      const parsed = parseDisplayDateInput(value);
-                      if (parsed) {
-                        handleCustomEndDate(parsed);
-                      } else if (!value.trim()) {
-                        handleCustomEndDate(undefined);
-                      }
-                    }}
-                    onBlur={() => {
-                      setCustomEndInput(customEndDate ? formatDateDisplay(customEndDate) : "");
-                    }}
-                  />
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label={t("invoices.periodEndDate")}
-                        className="w-full sm:w-auto"
-                      >
-                        <CalendarIcon className="h-4 w-4" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={customEndDate}
-                        onSelect={(date) => handleCustomEndDate(date ?? undefined)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="filter-end-date"
+                      variant="outline"
+                      className={cn("w-full justify-start text-left font-normal", !customEndDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {customEndDate ? formatDateDisplay(customEndDate) : t("invoices.periodDatePlaceholder")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={customEndDate}
+                      onSelect={(date) => handleCustomEndDate(date ?? undefined)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           )}
@@ -904,8 +818,6 @@ const Invoices = () => {
                 setPaymentMethodFilter("all");
                 setCustomStartDate(undefined);
                 setCustomEndDate(undefined);
-                setCustomStartInput("");
-                setCustomEndInput("");
                 updateUrlParams({
                   search: null,
                   period: "month",
@@ -925,13 +837,13 @@ const Invoices = () => {
       {/* Invoices Table */}
       <div className="invodata-card">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px]">
+          <table className="w-full">
             <thead>
               <tr className="border-b border-border">
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">{t("invoices.invoiceNumber")}</th>
-                <th className="hidden md:table-cell text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">{t("invoices.client")}</th>
-                <th className="hidden md:table-cell text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">{t("common.category")}</th>
-                <th className="hidden sm:table-cell text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">{t("invoices.date")}</th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">{t("invoices.client")}</th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">{t("common.category")}</th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">{t("invoices.date")}</th>
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">{t("invoices.amount")}</th>
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase px-6 py-4">{t("invoices.actions")}</th>
               </tr>
@@ -959,20 +871,13 @@ const Invoices = () => {
                 </tr>
               )}
               {!isLoading && !error && invoices.map((invoice) => (
-                <tr key={invoice.publicId} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                <tr key={invoice.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <Link to={`/invoices/${invoice.publicId}`} className="text-primary font-medium hover:underline">
-                        #{invoice.documentNum}
-                      </Link>
-                      {invoice.shared && (
-                        <Badge variant="secondary" className="text-[10px] uppercase">
-                          {t("invoices.sharedBadge")}
-                        </Badge>
-                      )}
-                    </div>
+                    <Link to={`/invoices/${invoice.id}`} className="text-primary font-medium hover:underline">
+                      #{invoice.documentNum}
+                    </Link>
                   </td>
-                  <td className="hidden md:table-cell px-6 py-4">
+                  <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-xs font-medium">
                         {getInitials(invoice.issuer?.name)}
@@ -980,62 +885,46 @@ const Invoices = () => {
                       <span className="font-medium text-foreground">{invoice.issuer?.name || t("invoices.noName")}</span>
                     </div>
                   </td>
-                  <td className="hidden md:table-cell px-6 py-4 text-muted-foreground">
-                    {(() => {
-                      const badge = getIssuerCategoryStyles(invoice.category);
-                      return (
-                        <Badge
-                          variant="outline"
-                          className={cn("capitalize", badge.className)}
-                          style={badge.style}
-                        >
-                          {getIssuerCategoryLabel(invoice.category)}
-                        </Badge>
-                      );
-                    })()}
+                  <td className="px-6 py-4 text-muted-foreground">
+                    <Badge 
+                      variant="outline" 
+                      className={cn("capitalize", getIssuerCategoryStyles(invoice.issuer?.category))}
+                      style={{
+                        backgroundColor: getCategoryBackgroundColor(invoice.issuer?.category) || undefined,
+                      }}
+                    >
+                      {getIssuerCategoryLabel(invoice.issuer?.category)}
+                    </Badge>
                   </td>
-                  <td className="hidden sm:table-cell px-6 py-4 text-muted-foreground">{formatDate(invoice.date)}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{formatDate(invoice.date)}</td>
                   <td className="px-6 py-4 font-medium text-foreground">{formatCurrency(invoice.totalAmount)}</td>
                   <td className="px-6 py-4">
-                    {invoice.shared ? (
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="h-8 gap-2"
-                        onClick={() => setPendingSharedRemove(invoice)}
-                        disabled={isRemovingShare}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        {t("invoices.sharedRemove")}
-                      </Button>
-                    ) : (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link to={`/invoices/${invoice.publicId}/edit`} className="flex items-center gap-2">
-                              <Pencil className="h-4 w-4" />
-                              {t("invoices.edit")}
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="flex items-center gap-2 text-danger focus:text-danger"
-                            onSelect={(event) => {
-                              event.preventDefault();
-                              setPendingDelete(invoice);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            {t("invoices.delete")}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link to={`/invoices/${invoice.id}/edit`} className="flex items-center gap-2">
+                            <Pencil className="h-4 w-4" />
+                            {t("invoices.edit")}
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="flex items-center gap-2 text-danger focus:text-danger"
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            setPendingDelete(invoice);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {t("invoices.delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}
@@ -1044,33 +933,57 @@ const Invoices = () => {
         </div>
 
         {/* Pagination */}
-        <div className="flex flex-col gap-3 px-6 py-4 border-t border-border md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-border">
           <p className="text-sm text-muted-foreground">
             {t("invoices.pagination", { visibleCount, totalCount })}
           </p>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setPage((current) => Math.max(0, current - 1))}
-              disabled={page === 0}
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <Button variant="default" size="icon" className="h-8 w-8">
-              {page + 1}
-            </Button>
-            <span className="px-2 text-muted-foreground">/ {totalPages}</span>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
-              disabled={page >= totalPages - 1}
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+
+          <div className="flex items-center gap-6">
+            {/* Input "Ir para" ao lado dos botões */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Ir para:</span>
+              <Input
+                  className="w-16 h-8 text-center text-sm"
+                  value={jumpPage}
+                  placeholder="..."
+                  onChange={(e) => setJumpPage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const p = parseInt(jumpPage);
+                      if (!isNaN(p) && p > 0 && p <= totalPages) {
+                        setPage(p - 1);
+                        setJumpPage("");
+                      }
+                    }
+                  }}
+              />
+            </div>
+
+            {/* Botões de Navegação */}
+            <div className="flex items-center gap-1">
+              <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setPage((current) => Math.max(0, current - 1))}
+                  disabled={page === 0}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <Button variant="default" size="icon" className="h-8 w-8">
+                {page + 1}
+              </Button>
+              <span className="px-2 text-muted-foreground">/ {totalPages}</span>
+              <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
+                  disabled={page >= totalPages - 1}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -1078,7 +991,7 @@ const Invoices = () => {
       <div className="invodata-card p-6 mt-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
           <p className="text-sm font-medium text-foreground">{t("invoices.totalsScope")}</p>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className={totalsScope === "page" ? "text-foreground font-medium" : undefined}>
               {t("invoices.totalsScopePage")}
             </span>
@@ -1117,23 +1030,6 @@ const Invoices = () => {
         </div>
       </div>
 
-      <footer className="mt-12 pt-6 border-t border-border">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <p className="text-sm text-muted-foreground">{t("app.footer")}</p>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-            <Link to="/terms" className="hover:text-foreground">
-              {t("auth.termsLink")}
-            </Link>
-            <Link to="/privacy" className="hover:text-foreground">
-              {t("auth.privacyPolicy")}
-            </Link>
-            <a href={surveyUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
-              {surveyLabel}
-            </a>
-          </div>
-        </div>
-      </footer>
-
       <AlertDialog open={Boolean(pendingDelete)} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1142,32 +1038,8 @@ const Invoices = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("invoices.deleteCancel")}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={handleDeleteInvoice} disabled={isDeleting}>
+            <AlertDialogAction onClick={handleDeleteInvoice} disabled={isDeleting}>
               {t("invoices.deleteConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={Boolean(pendingSharedRemove)}
-        onOpenChange={(open) => !open && setPendingSharedRemove(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("invoices.sharedRemoveTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("invoices.sharedRemoveDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isRemovingShare}>{t("invoices.deleteCancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={handleRemoveSharedInvoice}
-              disabled={isRemovingShare}
-            >
-              {isRemovingShare
-                ? t("invoices.sharedRemoveConfirming")
-                : t("invoices.sharedRemoveConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -53,11 +52,6 @@ import {
 
 const Budget = () => {
   const { t, i18n } = useTranslation();
-  const isPt = i18n.language?.toLowerCase().startsWith("pt");
-  const surveyUrl = isPt
-    ? "https://forms.gle/J8a4V2sUE8jn43pE6"
-    : "https://forms.gle/SEjfKLthcsonTbCEA";
-  const surveyLabel = isPt ? "Responder ao inquérito" : "Take the survey";
   const [selectedMonth, setSelectedMonth] = useState("");
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [statuses, setStatuses] = useState<Record<string, BudgetStatus>>({});
@@ -74,19 +68,6 @@ const Budget = () => {
   const [searchParams] = useSearchParams();
   const monthParam = searchParams.get("month") || "";
 
-  const parseMonthValue = (value: string) => {
-    const trimmed = value.trim();
-    const match = trimmed.match(/^(\d{4})-(\d{2})$/);
-    if (!match) return null;
-    const [, yearStr, monthStr] = match;
-    const year = Number.parseInt(yearStr, 10);
-    const month = Number.parseInt(monthStr, 10);
-    if (Number.isNaN(year) || Number.isNaN(month) || month < 1 || month > 12) return null;
-    const date = new Date(year, month - 1, 1);
-    const label = date.toLocaleDateString(locale, { month: "long", year: "numeric" });
-    return { value: `${yearStr}-${monthStr}`, label, month, year };
-  };
-
   const monthOptions = useMemo(() => {
     const options: Array<{ value: string; label: string; month: number; year: number }> = [];
     const now = new Date();
@@ -98,14 +79,8 @@ const Budget = () => {
       const label = date.toLocaleDateString(locale, { month: "long", year: "numeric" });
       options.push({ value, label, month, year });
     }
-    if (selectedMonth && !options.some((option) => option.value === selectedMonth)) {
-      const parsed = parseMonthValue(selectedMonth);
-      if (parsed) {
-        options.push(parsed);
-      }
-    }
     return options;
-  }, [locale, selectedMonth]);
+  }, [locale]);
 
   useEffect(() => {
     if (monthParam && monthOptions.some((option) => option.value === monthParam)) {
@@ -383,18 +358,11 @@ const Budget = () => {
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">{t("budget.title")}</h1>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full md:w-auto">
-          <Input
-            type="month"
-            className="w-full sm:w-40"
-            value={selectedMonth}
-            onChange={(event) => setSelectedMonth(event.target.value)}
-            aria-label={t("budget.selectMonth")}
-          />
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-3xl font-bold text-foreground">{t("budget.title")}</h1>
+        <div className="flex items-center gap-4">
           <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-full sm:w-44 gap-2">
+            <SelectTrigger className="w-44 gap-2">
               <Calendar className="w-4 h-4" />
               <SelectValue placeholder={t("budget.selectMonth")} />
             </SelectTrigger>
@@ -406,7 +374,7 @@ const Budget = () => {
               ))}
             </SelectContent>
           </Select>
-          <Button className="gap-2 w-full sm:w-auto" onClick={handleOpenDialog}>
+          <Button className="gap-2" onClick={handleOpenDialog}>
             <Settings2 className="w-4 h-4" />
             {t("budget.adjustLimits")}
           </Button>
@@ -427,7 +395,7 @@ const Budget = () => {
 
       {/* Total Budget Status */}
       <div className="invodata-card p-6 mb-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-4">
+        <div className="flex items-start justify-between mb-4">
           <div>
             <p className="text-sm text-muted-foreground mb-1">{t("budget.totalStatus")}</p>
             <div className="flex items-baseline gap-2">
@@ -450,7 +418,7 @@ const Budget = () => {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
+        <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-muted-foreground uppercase">{t("budget.overallProgress")}</span>
           <span className="text-sm font-medium text-primary">
             {t("budget.remaining", {
@@ -487,7 +455,7 @@ const Budget = () => {
           const styles = getCategoryStyles(category.key);
           return (
             <div key={category.key} className="invodata-card p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <div className="flex items-center gap-6">
                 {/* Icon */}
                 <div className={cn(
                   "w-12 h-12 rounded-xl flex items-center justify-center",
@@ -498,7 +466,7 @@ const Budget = () => {
 
                 {/* Info */}
                 <div className="flex-1">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-1">
+                  <div className="flex items-center justify-between mb-1">
                     <div>
                       <h3 className="font-semibold text-foreground">{category.name}</h3>
                       <p className="text-sm text-muted-foreground">{category.subtitle}</p>
@@ -509,7 +477,7 @@ const Budget = () => {
                           amount: category.budget.toLocaleString(locale, { minimumFractionDigits: 0 }),
                         })}
                       </p>
-                      <div className="mt-2 flex flex-wrap items-center justify-start sm:justify-end gap-2">
+                      <div className="mt-2 flex items-center justify-end gap-2">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -535,7 +503,7 @@ const Budget = () => {
                   </div>
 
                   {/* Progress bar */}
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-4">
                     <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                       <div
                         className={cn(
@@ -545,7 +513,7 @@ const Budget = () => {
                         style={{ width: `${Math.min(percentage, 100)}%` }}
                       />
                     </div>
-                    <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-6 w-full sm:w-auto sm:min-w-[180px]">
+                    <div className="flex items-center gap-6 min-w-[180px]">
                       <span className="text-sm text-muted-foreground">
                         {t("budget.spentLabel", {
                           amount: category.spent.toLocaleString(locale, { minimumFractionDigits: 0 }),
@@ -570,40 +538,23 @@ const Budget = () => {
       </div>
 
       {/* Budgeting Tip & Actions */}
-      <div className="invodata-card p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="invodata-card p-6 flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-foreground mb-1">{t("budget.tip.title")}</h3>
           <p className="text-sm text-muted-foreground max-w-xl">
             {t("budget.tip.body")}
           </p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center w-full sm:w-auto">
-          <Button variant="outline" className="gap-2 w-full sm:w-auto" onClick={handleExport}>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" className="gap-2" onClick={handleExport}>
             <FileDown className="w-4 h-4" />
             {t("budget.export")}
           </Button>
-          <Button className="gap-2 w-full sm:w-auto" onClick={handleOpenDialog}>
+          <Button className="gap-2" onClick={handleOpenDialog}>
             {t("budget.setNewLimits")}
           </Button>
         </div>
       </div>
-
-      <footer className="mt-12 pt-6 border-t border-border">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <p className="text-sm text-muted-foreground">{t("app.footer")}</p>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-            <Link to="/terms" className="hover:text-foreground">
-              {t("auth.termsLink")}
-            </Link>
-            <Link to="/privacy" className="hover:text-foreground">
-              {t("auth.privacyPolicy")}
-            </Link>
-            <a href={surveyUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
-              {surveyLabel}
-            </a>
-          </div>
-        </div>
-      </footer>
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => !open && setIsDialogOpen(false)}>
         <DialogContent>
@@ -637,7 +588,7 @@ const Budget = () => {
               />
             </div>
           </div>
-          <DialogFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <DialogFooter className="flex items-center justify-between">
             <Button
               variant="ghost"
               onClick={handleDeleteBudget}

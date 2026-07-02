@@ -41,12 +41,7 @@ type ChatMessage = ChatMessageResponse & {
 };
 
 const Chat = () => {
-  const { t, i18n } = useTranslation();
-  const isPt = i18n.language?.toLowerCase().startsWith("pt");
-  const surveyUrl = isPt
-    ? "https://forms.gle/J8a4V2sUE8jn43pE6"
-    : "https://forms.gle/SEjfKLthcsonTbCEA";
-  const surveyLabel = isPt ? "Responder ao inquérito" : "Take the survey";
+  const { t } = useTranslation();
   const invoiceLinkStorageKey = "invodata_chat_invoice_links";
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSessionListItem[]>([]);
@@ -436,7 +431,7 @@ const Chat = () => {
       );
       const total = page.totalElements ?? page.content?.length ?? 0;
       if (total === 1 && page.content?.[0]) {
-        const link = { href: `/invoices/${page.content[0].publicId}`, label: t("chat.viewInvoice") };
+        const link = { href: `/invoices/${page.content[0].id}`, label: t("chat.viewInvoice") };
         invoiceLinkCacheRef.current.set(cacheKey, link);
         return link;
       }
@@ -646,7 +641,7 @@ const Chat = () => {
 
   return (
     <DashboardLayout>
-      <div className="grid grid-cols-1 gap-6 min-h-[calc(100vh-140px)] pb-6 lg:grid-cols-[260px,1fr]">
+      <div className="grid grid-cols-[260px,1fr] gap-6 h-[calc(100vh-140px)]">
         <aside className="invodata-card p-4 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-foreground">{t("chat.historyTitle")}</h2>
@@ -722,11 +717,6 @@ const Chat = () => {
               {isLoadingMessages && (
                 <div className="text-sm text-muted-foreground">{t("chat.loadingMessages")}</div>
               )}
-              <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-warning/30 dark:bg-warning/10 dark:text-warning-foreground">
-                {isPt
-                  ? "Esta conversa é com IA. A informação é apenas orientativa e pode conter imprecisões."
-                  : "This conversation is with AI. The information is for guidance only and may be inaccurate."}
-              </div>
               {!isLoadingMessages && messages.length === 0 && (
                 <div className="text-sm text-muted-foreground">
                   {t("chat.empty")}
@@ -742,8 +732,8 @@ const Chat = () => {
                     <div
                       className={
                         isUser
-                          ? "max-w-[85%] md:max-w-[70%] rounded-2xl bg-primary text-primary-foreground px-4 py-3 text-sm shadow-sm"
-                          : "max-w-[85%] md:max-w-[70%] rounded-2xl bg-muted text-foreground px-4 py-3 text-sm"
+                          ? "max-w-[70%] rounded-2xl bg-primary text-primary-foreground px-4 py-3 text-sm shadow-sm"
+                          : "max-w-[70%] rounded-2xl bg-muted text-foreground px-4 py-3 text-sm"
                       }
                     >
                       {isUser ? (
@@ -765,7 +755,7 @@ const Chat = () => {
                 {error}
               </div>
             )}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex items-end gap-3">
               <Textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
@@ -782,7 +772,7 @@ const Chat = () => {
               <Button
                 onClick={handleSend}
                 disabled={!sessionId || isSending || !input.trim()}
-                className="h-[56px] px-6 w-full sm:w-auto"
+                className="h-[56px] px-6"
               >
                 {t("chat.send")}
               </Button>
@@ -790,22 +780,6 @@ const Chat = () => {
           </div>
         </div>
       </div>
-      <footer className="mt-12 pt-6 border-t border-border">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <p className="text-sm text-muted-foreground">{t("app.footer")}</p>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
-            <Link to="/terms" className="hover:text-foreground">
-              {t("auth.termsLink")}
-            </Link>
-            <Link to="/privacy" className="hover:text-foreground">
-              {t("auth.privacyPolicy")}
-            </Link>
-            <a href={surveyUrl} target="_blank" rel="noreferrer" className="hover:text-foreground">
-              {surveyLabel}
-            </a>
-          </div>
-        </div>
-      </footer>
       <Dialog open={Boolean(renameSessionId)} onOpenChange={(open) => {
         if (!open) {
           setRenameSessionId(null);

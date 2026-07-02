@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public class UploadJob {
     private final String id;
     private final String username;
-    private final String userKey;
     private final Instant createdAt;
     private final AtomicReference<UploadJobStatus> status;
     private volatile CompletableFuture<List<Invoice>> future;
@@ -21,10 +20,9 @@ public class UploadJob {
     private volatile List<UploadInvoiceReference> existingInvoices;
     private volatile String error;
 
-    public UploadJob(String id, String username, String userKey) {
+    public UploadJob(String id, String username) {
         this.id = id;
         this.username = username;
-        this.userKey = userKey;
         this.createdAt = Instant.now();
         this.status = new AtomicReference<>(UploadJobStatus.PENDING);
     }
@@ -35,10 +33,6 @@ public class UploadJob {
 
     public String getUsername() {
         return username;
-    }
-
-    public String getUserKey() {
-        return userKey;
     }
 
     public Instant getCreatedAt() {

@@ -11,7 +11,6 @@ import pt.rodrigimix.invodata.model.User;
 import pt.rodrigimix.invodata.repository.InvoiceRepository;
 import pt.rodrigimix.invodata.repository.NotificationRepository;
 import pt.rodrigimix.invodata.repository.UserRepository;
-import pt.rodrigimix.invodata.security.encryption.UserKeyContext;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -51,27 +50,16 @@ public class GamificationService {
     }
 
     private void processUserStreak(User user, int month, int year) {
-        if (UserKeyContext.getKey() == null) {
-            return;
+        // Uses existing query: getMonthlyTotals
+        Map<String, Object> totals = invoiceRepository.getMonthlyTotals(month, year, user.getUsername());
+
+        if (totals == null || totals.isEmpty()) {
+            return; // No data, keep streak unchanged
         }
 
-        double income = invoiceRepository.findByUser(user).stream()
-                .filter(invoice -> invoice.getDate() != null
-                        && invoice.getDate().getMonthValue() == month
-                        && invoice.getDate().getYear() == year)
-                .filter(invoice -> invoice.isRevenue())
-                .map(inv -> inv.getTotalAmount() == null ? 0.0 : inv.getTotalAmount())
-                .mapToDouble(Double::doubleValue)
-                .sum();
-
-        double expense = invoiceRepository.findByUser(user).stream()
-                .filter(invoice -> invoice.getDate() != null
-                        && invoice.getDate().getMonthValue() == month
-                        && invoice.getDate().getYear() == year)
-                .filter(invoice -> !invoice.isRevenue())
-                .map(inv -> inv.getTotalAmount() == null ? 0.0 : inv.getTotalAmount())
-                .mapToDouble(Double::doubleValue)
-                .sum();
+        // Safe conversion for native query values (BigDecimal or Double)
+        double income = parseDouble(totals.get("total_revenue"));
+        double expense = parseDouble(totals.get("total_expense"));
 
         // Logic: if income >= expense, increase the streak
         boolean inGreen = income >= expense;
@@ -115,5 +103,16 @@ public class GamificationService {
         notificationRepository.save(notification);
     }
 
-    // No DB parsing needed after in-memory aggregation.
+    // Helper to convert Object (from DB, may be BigDecimal) to double
+    private double parseDouble(Object value) {
+        if (value == null)
+            return 0.0;
+        if (value instanceof BigDecimal) {
+            return ((BigDecimal) value).doubleValue();
+        }
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        return 0.0;
+    }
 }

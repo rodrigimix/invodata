@@ -11,18 +11,13 @@ import pt.rodrigimix.invodata.model.Account;
 import pt.rodrigimix.invodata.model.User;
 import pt.rodrigimix.invodata.dto.AiConsentRequest;
 import pt.rodrigimix.invodata.dto.AccountUpdateRequest;
-import pt.rodrigimix.invodata.dto.MfaCodeRequest;
-import pt.rodrigimix.invodata.dto.MfaDisableRequest;
 import pt.rodrigimix.invodata.dto.PasswordConfirmRequest;
 import pt.rodrigimix.invodata.dto.UpdatePasswordRequest;
 import pt.rodrigimix.invodata.dto.UpdateUserRequest;
 import pt.rodrigimix.invodata.dto.UpdateUsernameRequest;
 import pt.rodrigimix.invodata.service.account.AccountService;
-import pt.rodrigimix.invodata.service.audit.AuditLogService;
 import pt.rodrigimix.invodata.service.user.DataPrivacyService;
-import pt.rodrigimix.invodata.service.user.EncryptionMigrationService;
 import pt.rodrigimix.invodata.service.user.UserService;
-import pt.rodrigimix.invodata.security.encryption.UserKeyContext;
 
 import jakarta.validation.Valid;
 import java.security.Principal;
@@ -41,20 +36,12 @@ public class UserController {
 
     private final DataPrivacyService dataPrivacyService;
 
-    private final AuditLogService auditLogService;
-
-    private final EncryptionMigrationService encryptionMigrationService;
-
     @Autowired
     public UserController(UserService userService, AccountService accountService,
-            DataPrivacyService dataPrivacyService,
-            AuditLogService auditLogService,
-            EncryptionMigrationService encryptionMigrationService) {
+            DataPrivacyService dataPrivacyService) {
         this.userService = userService;
         this.accountService = accountService;
         this.dataPrivacyService = dataPrivacyService;
-        this.auditLogService = auditLogService;
-        this.encryptionMigrationService = encryptionMigrationService;
     }
 
     @GetMapping("/")
@@ -132,29 +119,19 @@ public class UserController {
     public ResponseEntity<byte[]> exportUserData(@Valid @RequestBody PasswordConfirmRequest request,
             Principal principal) {
         ensurePassword(principal, request);
-        User user = userService.getUserFromUsername(principal.getName());
-        String salt = userService.getOrCreateEncryptionSalt(user.getUsername());
-        String derivedKey = userService.deriveUserKeyBase64(request.password(), salt);
-        UserKeyContext.setKeyFromBase64(derivedKey);
-        try {
-            auditLogService.log(principal.getName(), "DATA_EXPORT", Map.of("format", "zip"));
-            byte[] zip = dataPrivacyService.exportUserDataZip(principal.getName());
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"user-data.zip\"")
-                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .contentLength(zip.length)
-                    .body(zip);
-        } finally {
-            UserKeyContext.clear();
-        }
+        byte[] zip = dataPrivacyService.exportUserDataZip(principal.getName());
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"user-data.zip\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .contentLength(zip.length)
+                .body(zip);
     }
 
     @DeleteMapping
     public ResponseEntity<Map<String, String>> deleteUser(@Valid @RequestBody PasswordConfirmRequest request,
             Principal principal) {
         ensurePassword(principal, request);
-        auditLogService.log(principal.getName(), "DATA_DELETE", Map.of("scope", "user"));
         dataPrivacyService.deleteUserData(principal.getName());
         return ResponseEntity.ok(Map.of("message", "User deleted successfully."));
     }
@@ -169,40 +146,7 @@ public class UserController {
     public ResponseEntity<Map<String, Object>> updateAiConsent(Principal principal,
             @RequestBody AiConsentRequest request) {
         User user = userService.updateAiConsent(principal.getName(), request.consent());
-        auditLogService.log(principal.getName(), "AI_CONSENT_CHANGED", Map.of(
-                "consent", user.getAiConsent(),
-                "version", user.getAiConsentVersion(),
-                "timestamp", user.getAiConsentAt()));
         return ResponseEntity.ok(Map.of("ai_consent", user.getAiConsent()));
-    }
-
-    @PostMapping("/migrate-encryption")
-    public ResponseEntity<Map<String, Object>> migrateEncryption(Principal principal) {
-        User user = userService.getUserFromUsername(principal.getName());
-        Map<String, Object> result = encryptionMigrationService.migrateUserData(user);
-        auditLogService.log(principal.getName(), "ENCRYPTION_MIGRATION", result);
-        return ResponseEntity.ok(result);
-    }
-
-    @PostMapping("/mfa/setup")
-    public ResponseEntity<Map<String, String>> setupMfa(Principal principal) {
-        return ResponseEntity.ok(userService.setupMfa(principal.getName()));
-    }
-
-    @PostMapping("/mfa/enable")
-    public ResponseEntity<Map<String, String>> enableMfa(Principal principal,
-            @Valid @RequestBody MfaCodeRequest request) {
-        userService.enableMfa(principal.getName(), request.code());
-        auditLogService.log(principal.getName(), "MFA_ENABLED", Map.of());
-        return ResponseEntity.ok(Map.of("status", "enabled"));
-    }
-
-    @PostMapping("/mfa/disable")
-    public ResponseEntity<Map<String, String>> disableMfa(Principal principal,
-            @Valid @RequestBody MfaDisableRequest request) {
-        userService.disableMfa(principal.getName(), request.password(), request.code());
-        auditLogService.log(principal.getName(), "MFA_DISABLED", Map.of());
-        return ResponseEntity.ok(Map.of("status", "disabled"));
     }
 
     private void ensurePassword(Principal principal, PasswordConfirmRequest request) {

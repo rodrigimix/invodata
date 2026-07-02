@@ -14,7 +14,6 @@ import pt.rodrigimix.invodata.dto.UploadInvoiceReference;
 import pt.rodrigimix.invodata.service.invoice.DuplicateInvoiceException;
 import pt.rodrigimix.invodata.service.invoice.InvoiceService;
 import pt.rodrigimix.invodata.service.invoice.storage.InvoiceFileId;
-import pt.rodrigimix.invodata.security.encryption.UserKeyContext;
 
 import java.util.List;
 import java.util.Map;
@@ -52,10 +51,9 @@ public class UploadJobService {
             String userTaxId,
             String redactName,
             String redactTerms,
-            boolean storeRedactedOnly,
-            String userKey) {
+            boolean storeRedactedOnly) {
         String jobId = UUID.randomUUID().toString();
-        UploadJob job = new UploadJob(jobId, user.getUsername(), userKey);
+        UploadJob job = new UploadJob(jobId, user.getUsername());
         jobs.put(jobId, job);
 
         byte[] contents;
@@ -93,9 +91,6 @@ public class UploadJobService {
         Future<?> taskFuture = taskExecutor.submit(() -> {
             boolean acquired = false;
             try {
-                if (job.getUserKey() != null && !job.getUserKey().isBlank()) {
-                    UserKeyContext.setKeyFromBase64(job.getUserKey());
-                }
                 uploadSemaphore.acquire();
                 acquired = true;
                 if (job.isCanceled()) {
@@ -124,7 +119,6 @@ public class UploadJobService {
                 if (acquired) {
                     uploadSemaphore.release();
                 }
-                UserKeyContext.clear();
             }
         });
         job.setFuture(future);
@@ -161,7 +155,7 @@ public class UploadJobService {
 
     private UploadInvoiceReference toReference(Invoice invoice) {
         return new UploadInvoiceReference(
-                invoice.getPublicId(),
+                invoice.getId(),
                 invoice.getOriginalFileName(),
                 invoice.getDocumentNum());
     }

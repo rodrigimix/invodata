@@ -10,7 +10,6 @@ import pt.rodrigimix.invodata.model.Issuer;
 import pt.rodrigimix.invodata.model.CountryCode;
 import pt.rodrigimix.invodata.service.ai.AIService;
 import pt.rodrigimix.invodata.service.extraction.VIESService;
-import pt.rodrigimix.invodata.service.system.SystemSettingsService;
 
 @Deprecated
 @Component
@@ -23,22 +22,19 @@ public class EuropeanEnrichmentStrategy implements IssuerEnrichmentStratergy {
     protected final AIService aiService;
 
     protected final AppConfig appConfig;
-    protected final SystemSettingsService settingsService;
 
     @Autowired
-    public EuropeanEnrichmentStrategy(VIESService VIESService, AIService aiService, AppConfig appConfig,
-            SystemSettingsService settingsService) {
+    public EuropeanEnrichmentStrategy(VIESService VIESService, AIService aiService, AppConfig appConfig) {
         this.VIESService = VIESService;
         this.aiService = aiService;
         this.appConfig = appConfig;
-        this.settingsService = settingsService;
     }
 
     @Override
     public void enrich(Issuer issuer) {
         logger.debug("Enriching issuer for country: {}", issuer.getCountry());
 
-        if (!settingsService.isAiEnabled()) {
+        if (!appConfig.getAiEnabled()) {
             VIESResponse viesResponse = VIESService.validateVat(issuer.getCountry(), issuer.getTaxId());
 
             if (viesResponse != null && viesResponse.getIsValid()) {
@@ -49,7 +45,10 @@ public class EuropeanEnrichmentStrategy implements IssuerEnrichmentStratergy {
             }
         }
 
-        logger.debug("Categorizing issuer (ignored at issuer level).");
+        logger.debug("Categorizing issuer.");
+        String baseCategory = aiService.categorizeIssuer(issuer.getName(), null);
+        issuer.setCategory(baseCategory);
+        logger.info("Issuer enriched with category: {}", baseCategory);
     }
 
     @Override

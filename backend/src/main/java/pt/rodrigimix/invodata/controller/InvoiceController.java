@@ -13,25 +13,19 @@ import org.springframework.web.multipart.MultipartFile;
 import pt.rodrigimix.invodata.dto.InvoiceCreateRequest;
 import pt.rodrigimix.invodata.dto.InvoiceFileData;
 import pt.rodrigimix.invodata.dto.InvoiceTotalsResponse;
-import pt.rodrigimix.invodata.dto.InvoiceUploadUsageResponse;
 import pt.rodrigimix.invodata.dto.InvoiceUpdateRequest;
 import pt.rodrigimix.invodata.dto.UploadJobCreateResponse;
 import pt.rodrigimix.invodata.dto.UploadJobStatusResponse;
 import pt.rodrigimix.invodata.model.Invoice;
-import pt.rodrigimix.invodata.model.InvoiceUploadCounter;
 import pt.rodrigimix.invodata.model.User;
 import pt.rodrigimix.invodata.service.invoice.InvoiceService;
-import pt.rodrigimix.invodata.service.invoice.InvoiceUploadCounterService;
 import pt.rodrigimix.invodata.service.invoice.upload.UploadJob;
 import pt.rodrigimix.invodata.service.invoice.upload.UploadJobService;
 import pt.rodrigimix.invodata.service.ai.AIService;
 import pt.rodrigimix.invodata.service.user.UserService;
-import pt.rodrigimix.invodata.security.encryption.MissingUserKeyException;
-import pt.rodrigimix.invodata.security.encryption.UserKeyContext;
 
 import java.security.Principal;
 import java.time.LocalDate;
-import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -45,43 +39,30 @@ public class InvoiceController {
     private final UserService userService;
     private final UploadJobService uploadJobService;
     private final AIService aiService;
-    private final InvoiceUploadCounterService uploadCounterService;
 
     @Autowired
     public InvoiceController(InvoiceService invoiceService,
             UserService userService,
             UploadJobService uploadJobService,
-            AIService aiService,
-            InvoiceUploadCounterService uploadCounterService) {
+            AIService aiService) {
         this.invoiceService = invoiceService;
         this.userService = userService;
         this.uploadJobService = uploadJobService;
         this.aiService = aiService;
-        this.uploadCounterService = uploadCounterService;
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<List<Invoice>> uploadInvoice(
             @RequestParam("files") List<MultipartFile> files,
-            @RequestParam(value = "redactedFiles", required = false) List<MultipartFile> redactedFiles,
             @RequestParam(value = "userTaxId", required = false) String userTaxId,
             @RequestParam(value = "redactName", required = false) String redactName,
             @RequestParam(value = "redactTerms", required = false) String redactTerms,
-            @RequestParam(value = "storeRedactedOnly", required = false) Boolean storeRedactedOnly,
-            @RequestHeader(value = "X-User-Key", required = false) String userKey,
             Principal principal) {
         try {
 
-            String resolvedUserKey = resolveUserKey(userKey);
-
             String username = principal.getName();
             User user = userService.getUserFromUsername(username);
-            // 1. Quota check for bulk uploads
-            long newFilesCount = files.stream().filter(f -> !f.isEmpty()).count();
 
-            if (uploadCounterService.wouldExceed(user, newFilesCount)) {
-                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
-            }
             List<CompletableFuture<List<Invoice>>> futures = files.stream()
                     .filter(file -> !file.isEmpty())
                     .map(file -> invoiceService.processFileAsync(
@@ -90,18 +71,15 @@ public class InvoiceController {
                             userTaxId,
                             redactName,
                             redactTerms,
-                            Boolean.TRUE.equals(storeRedactedOnly),
+                            false,
                             null,
-                            null,
-                            resolvedUserKey))
+                            null))
                     .toList();
 
             List<Invoice> allInvoices = futures.stream()
                     .map(CompletableFuture::join)
                     .flatMap(List::stream)
                     .toList();
-
-            uploadCounterService.increment(user, newFilesCount);
 
             return ResponseEntity.ok(allInvoices);
         } catch (org.springframework.web.server.ResponseStatusException e) {
@@ -114,60 +92,25 @@ public class InvoiceController {
     @PostMapping(value = "/upload-job", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UploadJobCreateResponse> createUploadJob(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "redactedFile", required = false) MultipartFile redactedFile,
             @RequestParam(value = "userTaxId", required = false) String userTaxId,
             @RequestParam(value = "redactName", required = false) String redactName,
             @RequestParam(value = "redactTerms", required = false) String redactTerms,
-            @RequestParam(value = "storeRedactedOnly", required = false) Boolean storeRedactedOnly,
-            @RequestHeader(value = "X-User-Key", required = false) String userKey,
             Principal principal) {
         if (file == null || file.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
         String username = principal.getName();
         User user = userService.getUserFromUsername(username);
-        if (uploadCounterService.wouldExceed(user, 1)) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
-        }
-        String resolvedUserKey = resolveUserKey(userKey);
+
         String jobId = uploadJobService.createJob(
                 file,
-                redactedFile,
+                null,
                 user,
                 userTaxId,
                 redactName,
                 redactTerms,
-                Boolean.TRUE.equals(storeRedactedOnly),
-                resolvedUserKey);
-        uploadCounterService.increment(user, 1);
+                false);
         return ResponseEntity.ok(new UploadJobCreateResponse(jobId));
-    }
-
-    @GetMapping("/usage")
-    public ResponseEntity<InvoiceUploadUsageResponse> getUploadUsage(Principal principal) {
-        String username = principal.getName();
-        User user = userService.getUserFromUsername(username);
-        InvoiceUploadCounter counter = uploadCounterService.getCounter(user);
-        int limit = Integer.MAX_VALUE;
-        long used = counter.getUsedCount();
-        long remaining = Math.max(0, limit - used);
-        LocalDate now = LocalDate.now();
-        LocalDate period = counter.getFirstUploadAt() != null
-                ? counter.getFirstUploadAt().toLocalDate()
-                : now;
-        return ResponseEntity.ok(new InvoiceUploadUsageResponse(used, limit, remaining, period.getMonthValue(),
-                period.getYear()));
-    }
-
-    private String resolveUserKey(String userKey) {
-        if (userKey != null && !userKey.isBlank()) {
-            return userKey;
-        }
-        byte[] keyBytes = UserKeyContext.getKey();
-        if (keyBytes == null || keyBytes.length == 0) {
-            throw new MissingUserKeyException("User encryption key required.");
-        }
-        return Base64.getEncoder().encodeToString(keyBytes);
     }
 
     @PostMapping(value = "/redact-preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -351,60 +294,34 @@ public class InvoiceController {
         return ResponseEntity.ok(totals);
     }
 
-    @GetMapping("/{publicId}")
-    public ResponseEntity<Invoice> getInvoiceById(@PathVariable String publicId, Principal principal) {
+    @GetMapping("/{id}")
+    public ResponseEntity<Invoice> getInvoiceById(@PathVariable Long id, Principal principal) {
         User user = userService.getUserFromUsername(principal.getName());
-        return ResponseEntity.ok(invoiceService.getInvoiceByPublicIdForAccess(publicId, user));
+        return ResponseEntity.ok(invoiceService.getInvoiceById(id, user));
     }
 
-    @GetMapping("/{publicId}/file")
-    public ResponseEntity<byte[]> downloadInvoiceFile(@PathVariable String publicId,
-            @RequestHeader(value = "X-User-Key", required = false) String userKey,
-            Principal principal) {
-        applyUserKey(userKey);
+    @GetMapping("/{id}/file")
+    public ResponseEntity<byte[]> downloadInvoiceFile(@PathVariable Long id, Principal principal) {
         User user = userService.getUserFromUsername(principal.getName());
-        InvoiceFileData file = invoiceService.getInvoiceFile(publicId, user);
+        InvoiceFileData file = invoiceService.getInvoiceFile(id, user);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.filename() + "\"")
                 .contentType(MediaType.parseMediaType(file.contentType()))
                 .body(file.content());
     }
 
-    @GetMapping("/{publicId}/file/redacted")
-    public ResponseEntity<byte[]> downloadRedactedInvoiceFile(@PathVariable String publicId,
-            @RequestHeader(value = "X-User-Key", required = false) String userKey,
-            Principal principal) {
-        applyUserKey(userKey);
-        User user = userService.getUserFromUsername(principal.getName());
-        InvoiceFileData file = invoiceService.getRedactedInvoiceFile(publicId, user);
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.filename() + "\"")
-                .contentType(MediaType.parseMediaType(file.contentType()))
-                .body(file.content());
-    }
-
-    private void applyUserKey(String userKey) {
-        if (userKey != null && !userKey.isBlank()) {
-            UserKeyContext.setKeyFromBase64(userKey);
-            return;
-        }
-        if (UserKeyContext.getKey() == null) {
-            throw new MissingUserKeyException("User encryption key required.");
-        }
-    }
-
-    @PutMapping("/{publicId}")
-    public ResponseEntity<Invoice> updateInvoice(@PathVariable String publicId,
+    @PutMapping("/{id}")
+    public ResponseEntity<Invoice> updateInvoice(@PathVariable Long id,
             @RequestBody InvoiceUpdateRequest request,
             Principal principal) {
         User user = userService.getUserFromUsername(principal.getName());
-        return ResponseEntity.ok(invoiceService.updateInvoice(publicId, request, user));
+        return ResponseEntity.ok(invoiceService.updateInvoice(id, request, user));
     }
 
-    @DeleteMapping("/{publicId}")
-    public ResponseEntity<Void> deleteInvoice(@PathVariable String publicId, Principal principal) {
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteInvoice(@PathVariable Long id, Principal principal) {
         User user = userService.getUserFromUsername(principal.getName());
-        invoiceService.deleteInvoice(publicId, user);
+        invoiceService.deleteInvoice(id, user);
         return ResponseEntity.noContent().build();
     }
 }

@@ -18,9 +18,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 import enum
 import asyncio
-import random
-import time
-import threading
 from datetime import datetime
 from io import BytesIO
 from PIL import Image, ImageDraw
@@ -50,7 +47,6 @@ class InvoiceHeader(BaseModel):
     accountLast4: Optional[str] = None
     licensePlate: Optional[str] = None
     paymentMethod: Optional[str] = None
-    category: Optional[str] = None
 
 
 class InvoiceData(BaseModel):
@@ -158,7 +154,6 @@ class ChatSessionRequest(BaseModel):
     messages: List[ChatMessage]
     summary: Optional[str] = None
     finance_snapshot: FinanceSnapshot
-    current_date: Optional[str] = None
 
 
 class ChatAction(BaseModel):
@@ -365,395 +360,33 @@ def _expand_term_variants(value: str) -> set[str]:
     return {cleaned, cleaned.lower(), cleaned.upper(), cleaned.title()}
 
 
-def _normalize_for_match(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.lower())
-
-
-def _normalize_category(raw: Optional[str], allowed: Optional[set[str]] = None) -> str:
+def _normalize_category(raw: Optional[str]) -> str:
     if not raw:
         return "SERVICES"
-    allowed_set = allowed or set(ALLOWED_CATEGORIES)
-    cleaned = raw.strip()
-    normalized_key = re.sub(r"[^A-Za-z0-9]+", "_", cleaned).strip("_").upper()
-    if normalized_key in allowed_set:
-        return normalized_key
-    cleaned_tokens = re.sub(r"[^A-Z0-9]+", " ", normalized_key).split()
+    cleaned = raw.strip().upper()
+    if cleaned in ALLOWED_CATEGORIES:
+        return cleaned
+    cleaned_tokens = re.sub(r"[^A-Z0-9]+", " ", cleaned).split()
     for token in cleaned_tokens:
         mapped = CATEGORY_SYNONYMS.get(token)
         if mapped:
             return mapped
     for key, mapped in CATEGORY_SYNONYMS.items():
-        if key in normalized_key:
+        if key in cleaned:
             return mapped
     return "SERVICES"
 
 
-def _parse_categories(raw: str) -> list[str]:
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        parsed = []
-    if not isinstance(parsed, list):
-        return []
-    categories: list[str] = []
-    for entry in parsed:
-        if isinstance(entry, str) and entry.strip():
-            normalized = re.sub(r"[^A-Za-z0-9]+", "_", entry.strip()).strip("_").upper()
-            if normalized:
-                categories.append(normalized)
-    return categories
-
-
-def _parse_redact_terms(raw_terms: str) -> list[str]:
-    if not raw_terms:
-        return []
-    if ";" in raw_terms:
-        parts = re.split(r"[;]+", raw_terms)
-    else:
-        parts = [raw_terms]
-    return [part.strip() for part in parts if part and part.strip()]
-
-
-def _build_redaction_terms(user_name: str, user_tax_id: str, extra_terms: list[str]) -> list[str]:
-    terms: set[str] = set()
-    if user_name:
-        normalized_name = " ".join(user_name.split())
-        if len(normalized_name) > 2:
-            terms.update(_expand_term_variants(normalized_name))
-        for token in re.split(r"\s+", normalized_name):
-            if len(token) > 2:
-                terms.update(_expand_term_variants(token))
-    if user_tax_id:
-        compact = re.sub(r"\s+", "", user_tax_id)
-        normalized = re.sub(r"[^A-Za-z0-9]", "", user_tax_id)
-        digits = re.sub(r"\D", "", user_tax_id)
-        for candidate in [compact, normalized, digits]:
-            if len(candidate) > 2:
-                terms.update(_expand_term_variants(candidate))
-    for term in extra_terms:
-        if term and len(term) > 2:
-            terms.update(_expand_term_variants(term))
-    return sorted(terms, key=len, reverse=True)
-
-
-def _build_normalized_terms(terms: list[str]) -> list[str]:
-    normalized = []
-    for term in terms:
-        clean = _normalize_for_match(term)
-        if len(clean) > 2:
-            normalized.append(clean)
-    return sorted(set(normalized), key=len, reverse=True)
-
-
-def _parse_redact_boxes(raw_boxes: str) -> list[dict]:
-    if not raw_boxes:
-        return []
-    try:
-        parsed = json.loads(raw_boxes)
-    except Exception:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    boxes = []
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-        try:
-            x = float(item.get("x", 0))
-            y = float(item.get("y", 0))
-            width = float(item.get("width", 0))
-            height = float(item.get("height", 0))
-            page = int(item.get("page", 1))
-            page_width = float(item.get("pageWidth", 0))
-            page_height = float(item.get("pageHeight", 0))
-        except (TypeError, ValueError):
-            continue
-        if width <= 0 or height <= 0:
-            continue
-        boxes.append({
-            "x": x,
-            "y": y,
-            "width": width,
-            "height": height,
-            "page": page,
-            "pageWidth": page_width,
-            "pageHeight": page_height,
-        })
-    return boxes
-
-
-def _apply_boxes_to_image(image: Image.Image, boxes: list[dict]) -> int:
-    if not boxes:
-        return 0
-    draw = ImageDraw.Draw(image)
-    count = 0
-    for box in boxes:
-        page = box.get("page", 1)
-        if page not in (1, 0, None):
-            continue
-        x = box.get("x", 0)
-        y = box.get("y", 0)
-        w = box.get("width", 0)
-        h = box.get("height", 0)
-        if w <= 0 or h <= 0:
-            continue
-        draw.rectangle([x, y, x + w, y + h], fill=(0, 0, 0))
-        count += 1
-    return count
-
-
-def _apply_boxes_to_pdf(doc: fitz.Document, boxes: list[dict]) -> int:
-    if not boxes:
-        return 0
-    count = 0
-    for box in boxes:
-        page_index = int(box.get("page", 1)) - 1
-        if page_index < 0 or page_index >= doc.page_count:
-            continue
-        page = doc[page_index]
-        page_width = page.rect.width
-        page_height = page.rect.height
-        src_width = box.get("pageWidth") or page_width
-        src_height = box.get("pageHeight") or page_height
-        if src_width <= 0 or src_height <= 0:
-            continue
-        scale_x = page_width / src_width
-        scale_y = page_height / src_height
-        x0 = box.get("x", 0) * scale_x
-        y0 = box.get("y", 0) * scale_y
-        x1 = (box.get("x", 0) + box.get("width", 0)) * scale_x
-        y1 = (box.get("y", 0) + box.get("height", 0)) * scale_y
-        rect = fitz.Rect(x0, y0, x1, y1)
-        page.add_redact_annot(rect, fill=(0, 0, 0))
-        page.apply_redactions()
-        count += 1
-    return count
-
-
-def _redact_pil_image(image: Image.Image, terms: list[str]) -> int:
-    normalized_terms = _build_normalized_terms(terms)
-    if not normalized_terms:
-        return 0
-    try:
-        data = pytesseract.image_to_data(
-            image, output_type=Output.DICT, lang="por")
-    except TesseractNotFoundError:
-        logger.error("Tesseract not installed; skipping OCR redaction.")
-        return 0
-    draw = ImageDraw.Draw(image)
-    redaction_count = 0
-    for idx in range(len(data.get("text", []))):
-        text = (data["text"][idx] or "").strip().lower()
-        if not text:
-            continue
-        normalized = _normalize_for_match(text)
-        if not normalized:
-            continue
-        if not any(token in normalized for token in normalized_terms):
-            continue
-        x = data["left"][idx]
-        y = data["top"][idx]
-        w = data["width"][idx]
-        h = data["height"][idx]
-        draw.rectangle([x, y, x + w, y + h], fill=(0, 0, 0))
-        redaction_count += 1
-    return redaction_count
-
-
-def _redact_image_bytes(image_bytes: bytes, user_name: str, user_tax_id: str, extra_terms: list[str], redact_boxes: list[dict]) -> bytes:
-    terms = _build_redaction_terms(
-        user_name or "", user_tax_id or "", extra_terms)
-    if not terms and not redact_boxes:
-        return image_bytes
-    try:
-        image = Image.open(BytesIO(image_bytes))
-    except Exception:
-        return image_bytes
-    original_format = image.format or "PNG"
-    image = image.convert("RGB")
-    redaction_count = _redact_pil_image(image, terms) if terms else 0
-    box_count = _apply_boxes_to_image(image, redact_boxes)
-    if redaction_count == 0 and box_count == 0:
-        logger.info("No redaction matches found in image.")
-        return image_bytes
-    if redaction_count > 0:
-        logger.info(
-            "Redaction applied for %d term occurrences (image).", redaction_count)
-    if box_count > 0:
-        logger.info("Redaction applied for %d manual boxes (image).", box_count)
-    buffer = BytesIO()
-    image.save(buffer, format=original_format)
-    return buffer.getvalue()
-
-
-def _redact_pdf_bytes(pdf_bytes: bytes, user_name: str, user_tax_id: str, extra_terms: list[str], redact_boxes: list[dict]) -> bytes:
-    terms = _build_redaction_terms(
-        user_name or "", user_tax_id or "", extra_terms)
-    normalized_terms = _build_normalized_terms(terms)
-    if not terms and not redact_boxes:
-        return pdf_bytes
-    try:
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    except Exception:
-        return pdf_bytes
-    try:
-        redacted = False
-        redaction_count = 0
-        box_count = 0
-        for page_index in range(doc.page_count):
-            page = doc[page_index]
-            page_redacted = False
-            if normalized_terms:
-                words = page.get_text("words")
-                for word in words:
-                    text = word[4] if len(word) > 4 else ""
-                    normalized = _normalize_for_match(text)
-                    if not normalized:
-                        continue
-                    if not any(token in normalized for token in normalized_terms):
-                        continue
-                    rect = fitz.Rect(word[0], word[1], word[2], word[3])
-                    page.add_redact_annot(rect, fill=(0, 0, 0))
-                    page_redacted = True
-                    redaction_count += 1
-            if redact_boxes:
-                page_boxes = [
-                    box for box in redact_boxes
-                    if int(box.get("page", 1)) - 1 == page_index
-                ]
-                for box in page_boxes:
-                    page_width = page.rect.width
-                    page_height = page.rect.height
-                    src_width = box.get("pageWidth") or page_width
-                    src_height = box.get("pageHeight") or page_height
-                    if src_width <= 0 or src_height <= 0:
-                        continue
-                    scale_x = page_width / src_width
-                    scale_y = page_height / src_height
-                    x0 = box.get("x", 0) * scale_x
-                    y0 = box.get("y", 0) * scale_y
-                    x1 = (box.get("x", 0) + box.get("width", 0)) * scale_x
-                    y1 = (box.get("y", 0) + box.get("height", 0)) * scale_y
-                    rect = fitz.Rect(x0, y0, x1, y1)
-                    page.add_redact_annot(rect, fill=(0, 0, 0))
-                    page_redacted = True
-                    box_count += 1
-            if page_redacted:
-                page.apply_redactions()
-                redacted = True
-        if redacted:
-            logger.info(
-                "Redaction applied for %d term occurrences.", redaction_count)
-            if box_count > 0:
-                logger.info(
-                    "Redaction applied for %d manual boxes (PDF).", box_count)
-            return doc.tobytes()
-        logger.info("No text matches found. Falling back to OCR redaction.")
-        try:
-            images = convert_from_bytes(pdf_bytes)
-        except Exception:
-            return pdf_bytes
-        ocr_count = 0
-        box_count = 0
-        redacted_images = []
-        for idx, image in enumerate(images):
-            rgb = image.convert("RGB")
-            ocr_count += _redact_pil_image(rgb, terms)
-            page_boxes = [
-                box for box in redact_boxes
-                if int(box.get("page", 1)) - 1 == idx
-            ]
-            if page_boxes:
-                box_count += _apply_boxes_to_image(rgb, page_boxes)
-            redacted_images.append(rgb)
-        if ocr_count == 0 and box_count == 0:
-            logger.info("No OCR matches found.")
-            return pdf_bytes
-        logger.info("OCR redaction applied for %d term occurrences.", ocr_count)
-        if box_count > 0:
-            logger.info(
-                "Redaction applied for %d manual boxes (PDF OCR).", box_count)
-        buffer = BytesIO()
-        redacted_images[0].save(
-            buffer, format="PDF", save_all=True, append_images=redacted_images[1:])
-        return buffer.getvalue()
-    finally:
-        doc.close()
-
-
 app = FastAPI(title="InvoData AI API")
 
-_AI_ENABLED = os.getenv("INVODATA_AI_ENABLED", "true").strip().lower() in {"1", "true", "yes"}
-_CLIENT = None
-_CLIENT_ERROR = None
+client = genai.Client(
+    vertexai=True,
+    project=os.getenv("GCP_PROJECT"),
+    location=os.getenv("GCP_LOCATION", "europe-west4")
+)
 MODEL_ID = "gemini-2.5-flash"
 MAX_CHAT_MESSAGES = 50
 MAX_MESSAGES_TEXT_CHARS = 8000
-BACKOFF_MAX_ATTEMPTS = 5
-BACKOFF_BASE_SECONDS = 0.5
-BACKOFF_MAX_SECONDS = 8.0
-VERTEX_MIN_INTERVAL_SECONDS = 0.1
-VERTEX_MAX_CONCURRENCY = 4
-_VERTEX_LAST_CALL = 0.0
-_VERTEX_LOCK = threading.Lock()
-_VERTEX_SEMAPHORE = threading.Semaphore(VERTEX_MAX_CONCURRENCY)
-
-
-def _get_ai_client():
-    if not _AI_ENABLED:
-        raise HTTPException(status_code=503, detail="AI is disabled.")
-    global _CLIENT
-    global _CLIENT_ERROR
-    if _CLIENT is None:
-        try:
-            _CLIENT = genai.Client(
-                vertexai=True,
-                project=os.getenv("GCP_PROJECT"),
-                location=os.getenv("GCP_LOCATION", "europe-west4")
-            )
-            _CLIENT_ERROR = None
-        except Exception as exc:  # noqa: BLE001
-            _CLIENT_ERROR = exc
-    if _CLIENT is None:
-        detail = "AI credentials are not configured."
-        if _CLIENT_ERROR is not None:
-            detail = f"{detail} {_CLIENT_ERROR}"
-        raise HTTPException(status_code=503, detail=detail)
-    return _CLIENT
-
-
-def _generate_with_backoff(*args, **kwargs):
-    client = _get_ai_client()
-    last_error = None
-    for attempt in range(1, BACKOFF_MAX_ATTEMPTS + 1):
-        try:
-            with _VERTEX_SEMAPHORE:
-                with _VERTEX_LOCK:
-                    now = time.time()
-                    wait_for = VERTEX_MIN_INTERVAL_SECONDS - \
-                        (now - _VERTEX_LAST_CALL)
-                    if wait_for > 0:
-                        time.sleep(wait_for)
-                    globals()["_VERTEX_LAST_CALL"] = time.time()
-                return client.models.generate_content(*args, **kwargs)
-        except Exception as exc:  # noqa: BLE001
-            last_error = exc
-            if attempt >= BACKOFF_MAX_ATTEMPTS:
-                break
-            delay = min(BACKOFF_MAX_SECONDS,
-                        BACKOFF_BASE_SECONDS * (2 ** (attempt - 1)))
-            jitter = random.uniform(0, delay * 0.2)
-            sleep_for = delay + jitter
-            logger.warning(
-                "Vertex AI request failed (attempt %d/%d). Retrying in %.2fs.",
-                attempt,
-                BACKOFF_MAX_ATTEMPTS,
-                sleep_for,
-            )
-            time.sleep(sleep_for)
-    raise last_error
 
 
 def normalize_invoice_date(raw_date: str) -> str:
@@ -770,6 +403,38 @@ def normalize_invoice_date(raw_date: str) -> str:
         except ValueError:
             continue
     return raw_date
+
+
+def normalize_license_plate(raw_plate: Optional[str]) -> Optional[str]:
+    """
+    Normalize license plate to format AA-00-AA where:
+    - AA = uppercase letters
+    - 00 = digits
+    Examples: AB-12-CD, XY-99-ZW
+    """
+    if not raw_plate:
+        return raw_plate
+
+    # Remove all non-alphanumeric characters and convert to uppercase
+    cleaned = re.sub(r"[^A-Za-z0-9]", "", raw_plate).upper()
+
+    if not cleaned:
+        return raw_plate
+
+    # If already in correct format (4 letters + 2 digits), return with dashes
+    if len(cleaned) == 6:
+        # Check if format is: 2 letters, 2 digits, 2 letters
+        if cleaned[:2].isalpha() and cleaned[2:4].isdigit() and cleaned[4:6].isalpha():
+            return f"{cleaned[:2]}-{cleaned[2:4]}-{cleaned[4:6]}"
+
+    # Try to extract pattern from the string
+    # Look for: letters, digits, letters
+    match = re.search(r"([A-Z]{2})\D*(\d{2})\D*([A-Z]{2})", cleaned)
+    if match:
+        return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+
+    # If we can't parse it, return original
+    return raw_plate
 
 
 def normalize_issuer_tax_id(raw_tax_id: Optional[str], country: Optional[str]) -> Optional[str]:
@@ -815,37 +480,15 @@ async def scan_qr(file: UploadFile = File(...)):
     return {"qr_codes": qr_codes}
 
 
-@app.post("/api/redact-file")
-async def redact_file(file: UploadFile = File(...),
-                      user_name: str = Form(""),
-                      user_tax_id: str = Form(""),
-                      redact_name: str = Form(""),
-                      redact_terms: str = Form(""),
-                      redact_boxes: str = Form("")):
-    logger.info("Received redaction request.")
-    file_bytes = await file.read()
-    extra_terms = _parse_redact_terms(redact_terms)
-    boxes = _parse_redact_boxes(redact_boxes)
-    redact_name_value = redact_name or user_name
-    if (file.content_type or "").startswith("image/"):
-        redacted_bytes = _redact_image_bytes(
-            file_bytes, redact_name_value, user_tax_id, extra_terms, boxes)
-    else:
-        redacted_bytes = _redact_pdf_bytes(
-            file_bytes, redact_name_value, user_tax_id, extra_terms, boxes)
-    content_type = file.content_type or "application/octet-stream"
-    return Response(content=redacted_bytes, media_type=content_type)
-
 
 @app.post("/api/extract-invoice")
 async def extract_invoice(file: UploadFile = File(...),
                           accounts: str = Form("[]"),
-                          categories: str = Form("[]"),
                           user_name: str = Form(""),
                           user_tax_id: str = Form(""),
                           redact_name: str = Form(""),
                           redact_terms: str = Form(""),
-                          redact_boxes: str = Form("")):
+                          custom_categories: str = Form("[]")):
     logger.info("Received AI extraction request.")
     pdf_bytes = await file.read()
 
@@ -853,10 +496,20 @@ async def extract_invoice(file: UploadFile = File(...),
     accounts_context = ", ".join(
         account_names) if account_names else "No accounts provided"
 
-    provided_categories = _parse_categories(categories)
-    allowed_categories = set(ALLOWED_CATEGORIES)
-    allowed_categories.update(provided_categories)
-    categories_context = ", ".join(sorted(allowed_categories))
+    # Parse custom categories
+    try:
+        custom_cats = json.loads(custom_categories)
+        custom_cat_names = [cat.get("name") for cat in custom_cats if isinstance(cat, dict) and cat.get("name")]
+    except (json.JSONDecodeError, TypeError):
+        custom_cat_names = []
+
+    # Build categories context
+    predefined_categories = [
+        "UTILITIES", "SUPERMARKET", "RESTAURANT", "ENTERTAINMENT", "TRANSPORT",
+        "FUEL", "HEALTH", "TELECOM", "SERVICES", "EDUCATION", "CLOTHING", "REVENUE"
+    ]
+    all_categories = predefined_categories + custom_cat_names
+    categories_list = ", ".join(all_categories)
 
     prompt = f"""
     Analyze this invoice.
@@ -880,6 +533,21 @@ async def extract_invoice(file: UploadFile = File(...),
     - Set 'isRevenue' to true ONLY when the issuer matches the user by name AND tax id.
     - If only one of name or tax id matches the user, treat it as expense unless the document explicitly states the user is the issuer.
 
+    LICENSE PLATE RULES:
+    - When extracting license plates (matrículas), format them as AA-00-AA where:
+      * AA = uppercase letters (A-Z)
+      * 00 = two digits (0-9)
+    - Examples of correct format: AB-12-CD, XY-99-ZW
+    - Always convert to uppercase and standardize the format.
+    - If a license plate is found in a different format, convert it to AA-00-AA format.
+
+    CATEGORY ASSIGNMENT:
+    - Assign category from this complete list: {categories_list}
+    - Custom categories (user-created): {", ".join(custom_cat_names) if custom_cat_names else "None"}
+    - Prioritize custom categories if they match the issuer/content
+    - If no custom category matches, use predefined categories
+    - Always use exact category names from the list above
+
     OUTPUT REQUIREMENTS:
     - The 'date' field must be in ISO format: YYYY-MM-DD.
     - 'issuerTaxId' must be unique per issuer and formatted as COUNTRYCODE+NIF with no spaces (example: PT123456789).
@@ -889,21 +557,11 @@ async def extract_invoice(file: UploadFile = File(...),
     - Each item must include 'taxPrice' and 'taxPercent' (percentage value from 0-100) when available.
     - If an item indicates free shipping (e.g., "envio grátis", "portes grátis"), represent it as a discount with negative totalPrice and unitPrice when values exist.
     - If you set 'accountLast4', it must be exactly 4 digits.
-    - If you provide 'category', it must be one of: {categories_context}.
+    - If you set 'licensePlate', it must be in the format AA-00-AA with uppercase letters.
     """
 
     try:
-        extra_terms = _parse_redact_terms(redact_terms)
-        boxes = _parse_redact_boxes(redact_boxes)
-        redact_name_value = redact_name or user_name
-        if redact_name_value or user_tax_id or extra_terms or boxes:
-            if (file.content_type or "").startswith("image/"):
-                pdf_bytes = _redact_image_bytes(
-                    pdf_bytes, redact_name_value, user_tax_id, extra_terms, boxes)
-            else:
-                pdf_bytes = _redact_pdf_bytes(
-                    pdf_bytes, redact_name_value, user_tax_id, extra_terms, boxes)
-        response = _generate_with_backoff(
+        response = client.models.generate_content(
             model=MODEL_ID,
             contents=[
                 types.Part.from_bytes(
@@ -928,13 +586,12 @@ async def extract_invoice(file: UploadFile = File(...),
             if header_tax_id:
                 header["issuerTaxId"] = normalize_issuer_tax_id(
                     header_tax_id, header_country)
-            header_category = header.get("category")
-            if header_category:
-                header["category"] = _normalize_category(header_category, allowed_categories)
+            # Normalize license plate to AA-00-AA format
+            license_plate = header.get("licensePlate")
+            if license_plate:
+                header["licensePlate"] = normalize_license_plate(license_plate)
         return invoices
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error extracting Gemini: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -944,8 +601,7 @@ async def extract_invoice(file: UploadFile = File(...),
 async def categorize_issuer(
     issuer_name: str = Form(...),
     designation: str = Form(None),
-    items: str = Form(None),
-    categories: str = Form("[]")
+    items: str = Form(None)
 ):
     logger.info("Categorization request received.")
 
@@ -990,20 +646,16 @@ async def categorize_issuer(
         logger.info("Heuristic categorization: TELECOM")
         return {"category": "TELECOM"}
 
-    provided_categories = _parse_categories(categories)
-    allowed_categories = set(ALLOWED_CATEGORIES)
-    allowed_categories.update(provided_categories)
-    categories_context = ", ".join(sorted(allowed_categories))
-
     prompt = (
         f"Analyze this company: {context} and classify it. "
         "Use item/service descriptions to disambiguate when available. "
         "Return exactly one of these uppercase categories: "
-        f"{categories_context}."
+        "UTILITIES, SUPERMARKET, RESTAURANT, ENTERTAINMENT, TRANSPORT, FUEL, "
+        "HEALTH, TELECOM, SERVICES, EDUCATION, CLOTHING."
     )
 
     try:
-        response = _generate_with_backoff(
+        response = client.models.generate_content(
             model=MODEL_ID,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -1013,13 +665,11 @@ async def categorize_issuer(
         )
 
         result = json.loads(response.text)
-        final_category = _normalize_category(result.get("category"), allowed_categories)
+        final_category = _normalize_category(result.get("category"))
 
         logger.info(f"Categorization success: {final_category}")
         return {"category": final_category}
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error on categorize: {str(e)}")
         return {"category": "SERVICES"}
@@ -1053,11 +703,9 @@ async def chat_session_endpoint(payload: ChatSessionRequest):
     localized_categories = ", ".join(
         [f"{code} ({labels.get(code, code)})" for code in sorted(ALLOWED_CATEGORIES)])
 
-    current_date = payload.current_date or datetime.utcnow().strftime("%Y-%m-%d")
     prompt = (
         "You are a helpful finance assistant. Use the provided session summary, "
         "message history, and finance snapshot to answer the latest user request. "
-        f"Today's date is {current_date}. "
         "Answer in the same language as the user. "
         "If the requested detail is not present in the snapshot, say you don't have "
         "enough data to answer precisely. When asked about goals, use finance_snapshot.goals. "
@@ -1091,7 +739,7 @@ async def chat_session_endpoint(payload: ChatSessionRequest):
 
     try:
         response = await asyncio.to_thread(
-            _generate_with_backoff,
+            client.models.generate_content,
             model=MODEL_ID,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -1099,8 +747,6 @@ async def chat_session_endpoint(payload: ChatSessionRequest):
                 response_schema=ChatSessionResponse
             )
         )
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error in chat-session endpoint: {str(e)}")
         raise HTTPException(status_code=502, detail="Gemini request failed")

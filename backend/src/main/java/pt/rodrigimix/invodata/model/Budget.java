@@ -2,9 +2,6 @@ package pt.rodrigimix.invodata.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import pt.rodrigimix.invodata.security.encryption.EncryptedDoubleConverter;
-import pt.rodrigimix.invodata.security.encryption.EncryptedIntegerConverter;
-import pt.rodrigimix.invodata.security.encryption.EncryptedStringConverter;
 
 import java.util.UUID;
 
@@ -21,23 +18,15 @@ public class Budget {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @ManyToOne
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-
-    @Column(columnDefinition = "TEXT", nullable = false)
-    @Convert(converter = EncryptedStringConverter.class)
+    @Column(nullable = false)
     private String category;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    @Convert(converter = EncryptedDoubleConverter.class)
+    @Column(nullable = false)
     private Double monthlyLimit;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    @Convert(converter = EncryptedIntegerConverter.class)
+    @Column(nullable = false)
     private Integer month;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
-    @Convert(converter = EncryptedIntegerConverter.class)
+    @Column(nullable = false)
     private Integer year;
 }

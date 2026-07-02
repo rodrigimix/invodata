@@ -43,7 +43,6 @@ type UploadJobContextValue = {
   updateEntries: (updater: (entries: UploadEntry[]) => UploadEntry[]) => void;
   setPopupBatchId: (batchId: string | null) => void;
   enablePopupForBatch: () => void;
-  clearCompletedEntries: () => void;
 };
 
 type StoredState = {
@@ -53,12 +52,11 @@ type StoredState = {
 };
 
 const STORAGE_KEY = "invodata_upload_jobs_v1";
-const DONE_STATUSES = new Set<UploadEntryStatus>(["success", "error", "canceled"]);
 
 const UploadJobContext = createContext<UploadJobContextValue | undefined>(undefined);
 
 const toReference = (invoice: Invoice): UploadInvoiceReference => ({
-  publicId: invoice.publicId,
+  id: invoice.id,
   originalFileName: invoice.originalFileName,
   documentNum: invoice.documentNum,
 });
@@ -116,13 +114,6 @@ export const UploadJobProvider = ({ children }: { children: ReactNode }) => {
   }, [entries.length, batchId]);
 
   useEffect(() => {
-    if (entries.length === 0 && batchId) {
-      setBatchId(null);
-      setPopupBatchId(null);
-    }
-  }, [entries.length, batchId]);
-
-  useEffect(() => {
     if (!batchId && popupBatchId) {
       setPopupBatchId(null);
       return;
@@ -134,11 +125,11 @@ export const UploadJobProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const payload: StoredState = {
-      batchId,
-      popupBatchId,
-      entries: entries.map(({ file, redactedFile, redactedPreviewUrl, redactionError, ...rest }) => rest),
-    };
+  const payload: StoredState = {
+    batchId,
+    popupBatchId,
+    entries: entries.map(({ file, redactedFile, redactedPreviewUrl, redactionError, ...rest }) => rest),
+  };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [entries, batchId, popupBatchId]);
 
@@ -272,10 +263,6 @@ export const UploadJobProvider = ({ children }: { children: ReactNode }) => {
     setBatchId(String(Date.now()));
   };
 
-  const clearCompletedEntries = () => {
-    setEntries((prev) => prev.filter((entry) => !DONE_STATUSES.has(entry.status)));
-  };
-
   const value = useMemo(
     () => ({
       entries,
@@ -285,7 +272,6 @@ export const UploadJobProvider = ({ children }: { children: ReactNode }) => {
       updateEntries,
       setPopupBatchId,
       enablePopupForBatch,
-      clearCompletedEntries,
     }),
     [entries, batchId, popupBatchId]
   );
